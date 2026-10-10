@@ -7,10 +7,10 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-# Allow-list: anything not matching is NOT packed (docs/, dev/, tests/, scripts/, dist/, mock engine...).
+# Allow-list: anything not matching is NOT packed (docs/, dev/, tests/, scripts/, dist/).
 INCLUDE='^(index\.html|main\.js|main\.css|LICENSE|README\.md|js/[^/]+\.js|levels/[^/]+\.json|quantum/.+\.py|audio/[^/]+\.ogg)$'
-# Dropped even if they match INCLUDE: the mock engine and Python tests.
-DENY='^(js/mock_engine\.js|(.*/)?(tests?/.*|test_[^/]*\.py|[^/]*_test\.py))$'
+# Dropped even if they match INCLUDE: Python tests.
+DENY='^((.*/)?(tests?/.*|test_[^/]*\.py|[^/]*_test\.py))$'
 MAX_FILES=100
 MAX_BYTES=$((2 * 1024 * 1024))
 

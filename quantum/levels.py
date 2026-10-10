@@ -166,7 +166,44 @@ def validate_level(level: dict) -> dict:
         known_labels |= set(objects) | terminal_ids | {t + "_target" for t in terminal_ids}
         if any(label not in known_labels for label in legend.values()):
             raise ValueError("Legend references unknown entities")
+        _check_decorations(stage.get("decorations", []), grid, legend)
     return deepcopy(level)
+
+
+SCENERY_LABELS = {"wall", "floor", "region_separator"}
+
+
+def _check_decorations(decorations, grid, legend):
+    """Purely visual layer: never read by the engine, but it must not hide gameplay cells.
+
+    Each item is {"sprite": name, "cell": [row, col] (top-left), "footprint": [w, h] in tiles}.
+    Covered cells may only be plain scenery; wall cells are allowed solely for `wall_*` sprites.
+    """
+    if not isinstance(decorations, list):
+        raise ValueError("decorations must be a list")
+    for deco in decorations:
+        if not isinstance(deco, dict):
+            raise ValueError("Decoration definitions must be dictionaries")
+        sprite, cell, footprint = deco.get("sprite"), deco.get("cell"), deco.get("footprint")
+        if not isinstance(sprite, str) or not sprite:
+            raise ValueError("Decoration needs a sprite name")
+        if (not isinstance(cell, list) or len(cell) != 2
+                or not integer(cell[0], upper=len(grid)) or not integer(cell[1], upper=len(grid[0]))):
+            raise ValueError("Decoration cell must be [row, col] inside the map")
+        if (not isinstance(footprint, list) or len(footprint) != 2
+                or not all(integer(n, lower=1) for n in footprint)):
+            raise ValueError("Decoration footprint must be [w, h] positive integers")
+        row, col = cell
+        width, height = footprint
+        if row + height > len(grid) or col + width > len(grid[0]):
+            raise ValueError("Decoration footprint leaves the map")
+        for r in range(row, row + height):
+            for c in range(col, col + width):
+                label = legend[grid[r][c]]
+                if label not in SCENERY_LABELS:
+                    raise ValueError("Decorations cannot cover interactive cells")
+                if label != "floor" and not sprite.startswith("wall_"):
+                    raise ValueError("Only wall_* decorations may cover wall cells")
 
 
 def read_level(level_id: str) -> dict:

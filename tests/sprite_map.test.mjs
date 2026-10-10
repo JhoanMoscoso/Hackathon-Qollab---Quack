@@ -1,7 +1,9 @@
 // Tests for js/sprite_map.js (pure registry of selected sprite cells). Run: node --test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { TILE, SHEET_W, SHEET_H, ATLAS, DIRS, characterFrame, dirFromDelta, walkFrameIndex } from '../js/sprite_map.js';
+import {
+  TILE, SHEET_W, SHEET_H, ATLAS, DIRS, characterFrame, dirFromDelta, walkFrameIndex, isFloorDetail, decorSpritePos, DECOR_SCALE,
+} from '../js/sprite_map.js';
 
 const REQUIRED = [
   'floor', 'wall', 'wall_center', 'door_0', 'door_1', 'door_super',
@@ -85,4 +87,28 @@ test('walkFrameIndex alternates 0/1 at 8 fps while walking, 0 when idle or reduc
   assert.equal(walkFrameIndex(250, true, false), 0);
   assert.equal(walkFrameIndex(125, false, false), 0);
   assert.equal(walkFrameIndex(125, true, true), 0);
+});
+
+test('isFloorDetail: floor_* names (mats, grates) sit under the other decorations', () => {
+  for (const name of ['floor_mat', 'floor_grate', 'floor_crack', 'grate', 'mat']) assert.equal(isFloorDetail(name), true, name);
+  for (const name of ['tank_a', 'tank_b', 'plant', 'wall_light', 'desk', '']) assert.equal(isFloorDetail(name), false, name);
+});
+
+test('decorSpritePos: frames are source pixels drawn at 2x; integer, bottom-centre aligned in the footprint', () => {
+  const tile = 32;
+  assert.equal(DECOR_SCALE, 2);
+  // full-footprint sprite (16x32 source = 32x64 on screen): exactly on the cell
+  assert.deepEqual(decorSpritePos([7, 1], [1, 2], { w: 16, h: 32 }), [7 * tile, 1 * tile]);
+  // shorter than the footprint: bottom aligned, centred horizontally (6x8 source = 12x16 screen)
+  assert.deepEqual(decorSpritePos([1, 4], [1, 1], { w: 6, h: 8 }), [1 * tile + 10, 4 * tile + 16]);
+  // 24x6 source mat in a 2x1 footprint: 48x12 screen
+  assert.deepEqual(decorSpritePos([5, 3], [2, 1], { w: 24, h: 6 }), [5 * tile + 8, 3 * tile + 20]);
+  // tank 7x17 source = 14x34 screen in a 1x2 footprint
+  assert.deepEqual(decorSpritePos([7, 1], [1, 2], { w: 7, h: 17 }), [7 * tile + 9, 1 * tile + 64 - 34]);
+  // 6x3 source light on a wall tile: 12x6 screen, resting on the bottom of the tile
+  assert.deepEqual(decorSpritePos([5, 0], [1, 1], { w: 6, h: 3 }), [5 * tile + 10, 26]);
+  // odd source widths still land on integers
+  const [x, y] = decorSpritePos([5, 0], [1, 1], { w: 5, h: 11 });
+  assert.ok(Number.isInteger(x) && Number.isInteger(y));
+  assert.deepEqual([x, y], [5 * tile + 11, 10]);
 });

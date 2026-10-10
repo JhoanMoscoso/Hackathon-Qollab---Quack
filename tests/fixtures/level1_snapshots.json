@@ -1,0 +1,969 @@
+{
+ "_note": "Real Engine snapshots of level1 (Juanjo's validated Bell preparation). Regenerate: new_session, apply_gate(h,0,actor=alice), apply_gate(cx,0,1,actor=bob), run_circuit, measure(0), measure(1).",
+ "initial": {
+  "num_qubits": 2,
+  "ket": "1|00⟩",
+  "amplitudes": [
+   [
+    1.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ]
+  ],
+  "probs": {
+   "00": 1.0,
+   "10": 0.0,
+   "01": 0.0,
+   "11": 0.0
+  },
+  "marginals": [
+   [
+    1.0,
+    0.0
+   ],
+   [
+    1.0,
+    0.0
+   ]
+  ],
+  "entangled": false,
+  "bell_label": null,
+  "state_key": "2b650292a514",
+  "schema_version": 2,
+  "level_id": "level1",
+  "stage_id": "bell_preparation",
+  "stage_index": 0,
+  "stage_count": 1,
+  "revision": 1,
+  "initial_circuit": [],
+  "measured": [
+   null,
+   null
+  ],
+  "history": [],
+  "gates_left": 2,
+  "terminal_uses_left": {
+   "alice_h": 1,
+   "bob_cx": 1
+  },
+  "objects": {
+   "door_A": "0",
+   "door_B": "0"
+  },
+  "objective": {
+   "status": "pending",
+   "quantum_ready": false,
+   "failure_policy": "retry_stage",
+   "required_measurements": [
+    0,
+    1
+   ]
+  },
+  "source": "statevector_fallback",
+  "sampling": {
+   "source": "statevector_fallback",
+   "counts": {},
+   "shots": 0,
+   "reason": "not_precomputed",
+   "backend": null
+  },
+  "last_measurement": null,
+  "circuit_validation": {
+   "required": true,
+   "validated": false,
+   "status": "building",
+   "target_bell": "Phi+",
+   "required_sequence": [
+    [
+     "h",
+     0
+    ],
+    [
+     "cx",
+     0,
+     1
+    ]
+   ]
+  },
+  "measurement_enabled": false,
+  "exits_unlocked": false,
+  "door_states": {
+   "door_A": "closed",
+   "door_B": "closed"
+  }
+ },
+ "built_h": {
+  "num_qubits": 2,
+  "ket": "0.707|00⟩ + 0.707|10⟩",
+  "amplitudes": [
+   [
+    0.707107,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.707107,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ]
+  ],
+  "probs": {
+   "00": 0.5,
+   "10": 0.5,
+   "01": 0.0,
+   "11": 0.0
+  },
+  "marginals": [
+   [
+    0.5,
+    0.5
+   ],
+   [
+    1.0,
+    0.0
+   ]
+  ],
+  "entangled": false,
+  "bell_label": null,
+  "state_key": "617f9d82ed99",
+  "schema_version": 2,
+  "level_id": "level1",
+  "stage_id": "bell_preparation",
+  "stage_index": 0,
+  "stage_count": 1,
+  "revision": 2,
+  "initial_circuit": [],
+  "measured": [
+   null,
+   null
+  ],
+  "history": [
+   [
+    "h",
+    0
+   ]
+  ],
+  "gates_left": 1,
+  "terminal_uses_left": {
+   "alice_h": 0,
+   "bob_cx": 1
+  },
+  "objects": {
+   "door_A": "super",
+   "door_B": "0"
+  },
+  "objective": {
+   "status": "pending",
+   "quantum_ready": false,
+   "failure_policy": "retry_stage",
+   "required_measurements": [
+    0,
+    1
+   ]
+  },
+  "source": "statevector_fallback",
+  "sampling": {
+   "source": "statevector_fallback",
+   "counts": {},
+   "shots": 0,
+   "reason": "not_precomputed",
+   "backend": null
+  },
+  "last_measurement": null,
+  "circuit_validation": {
+   "required": true,
+   "validated": false,
+   "status": "building",
+   "target_bell": "Phi+",
+   "required_sequence": [
+    [
+     "h",
+     0
+    ],
+    [
+     "cx",
+     0,
+     1
+    ]
+   ]
+  },
+  "measurement_enabled": false,
+  "exits_unlocked": false,
+  "door_states": {
+   "door_A": "closed",
+   "door_B": "closed"
+  }
+ },
+ "built": {
+  "num_qubits": 2,
+  "ket": "0.707|00⟩ + 0.707|11⟩",
+  "amplitudes": [
+   [
+    0.707107,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.707107,
+    0.0
+   ]
+  ],
+  "probs": {
+   "00": 0.5,
+   "10": 0.0,
+   "01": 0.0,
+   "11": 0.5
+  },
+  "marginals": [
+   [
+    0.5,
+    0.5
+   ],
+   [
+    0.5,
+    0.5
+   ]
+  ],
+  "entangled": true,
+  "bell_label": "Phi+",
+  "state_key": "dcb205fc712d",
+  "schema_version": 2,
+  "level_id": "level1",
+  "stage_id": "bell_preparation",
+  "stage_index": 0,
+  "stage_count": 1,
+  "revision": 3,
+  "initial_circuit": [],
+  "measured": [
+   null,
+   null
+  ],
+  "history": [
+   [
+    "h",
+    0
+   ],
+   [
+    "cx",
+    0,
+    1
+   ]
+  ],
+  "gates_left": 0,
+  "terminal_uses_left": {
+   "alice_h": 0,
+   "bob_cx": 0
+  },
+  "objects": {
+   "door_A": "super",
+   "door_B": "super"
+  },
+  "objective": {
+   "status": "pending",
+   "quantum_ready": false,
+   "failure_policy": "retry_stage",
+   "required_measurements": [
+    0,
+    1
+   ]
+  },
+  "source": "statevector_fallback",
+  "sampling": {
+   "source": "statevector_fallback",
+   "counts": {},
+   "shots": 0,
+   "reason": "not_precomputed",
+   "backend": null
+  },
+  "last_measurement": null,
+  "circuit_validation": {
+   "required": true,
+   "validated": false,
+   "status": "building",
+   "target_bell": "Phi+",
+   "required_sequence": [
+    [
+     "h",
+     0
+    ],
+    [
+     "cx",
+     0,
+     1
+    ]
+   ]
+  },
+  "measurement_enabled": false,
+  "exits_unlocked": false,
+  "door_states": {
+   "door_A": "closed",
+   "door_B": "closed"
+  }
+ },
+ "validated": {
+  "num_qubits": 2,
+  "ket": "0.707|00⟩ + 0.707|11⟩",
+  "amplitudes": [
+   [
+    0.707107,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.707107,
+    0.0
+   ]
+  ],
+  "probs": {
+   "00": 0.5,
+   "10": 0.0,
+   "01": 0.0,
+   "11": 0.5
+  },
+  "marginals": [
+   [
+    0.5,
+    0.5
+   ],
+   [
+    0.5,
+    0.5
+   ]
+  ],
+  "entangled": true,
+  "bell_label": "Phi+",
+  "state_key": "dcb205fc712d",
+  "schema_version": 2,
+  "level_id": "level1",
+  "stage_id": "bell_preparation",
+  "stage_index": 0,
+  "stage_count": 1,
+  "revision": 4,
+  "initial_circuit": [],
+  "measured": [
+   null,
+   null
+  ],
+  "history": [
+   [
+    "h",
+    0
+   ],
+   [
+    "cx",
+    0,
+    1
+   ],
+   [
+    "run_circuit"
+   ]
+  ],
+  "gates_left": 0,
+  "terminal_uses_left": {
+   "alice_h": 0,
+   "bob_cx": 0
+  },
+  "objects": {
+   "door_A": "super",
+   "door_B": "super"
+  },
+  "objective": {
+   "status": "pending",
+   "quantum_ready": false,
+   "failure_policy": "retry_stage",
+   "required_measurements": [
+    0,
+    1
+   ]
+  },
+  "source": "statevector_fallback",
+  "sampling": {
+   "source": "statevector_fallback",
+   "counts": {},
+   "shots": 0,
+   "reason": "not_precomputed",
+   "backend": null
+  },
+  "last_measurement": null,
+  "circuit_validation": {
+   "required": true,
+   "validated": true,
+   "status": "validated",
+   "target_bell": "Phi+",
+   "required_sequence": [
+    [
+     "h",
+     0
+    ],
+    [
+     "cx",
+     0,
+     1
+    ]
+   ]
+  },
+  "measurement_enabled": true,
+  "exits_unlocked": false,
+  "door_states": {
+   "door_A": "closed",
+   "door_B": "closed"
+  }
+ },
+ "measured_q0_0": {
+  "num_qubits": 2,
+  "ket": "1|00⟩",
+  "amplitudes": [
+   [
+    1.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ]
+  ],
+  "probs": {
+   "00": 1.0,
+   "10": 0.0,
+   "01": 0.0,
+   "11": 0.0
+  },
+  "marginals": [
+   [
+    1.0,
+    0.0
+   ],
+   [
+    1.0,
+    0.0
+   ]
+  ],
+  "entangled": false,
+  "bell_label": null,
+  "state_key": "2b650292a514",
+  "schema_version": 2,
+  "level_id": "level1",
+  "stage_id": "bell_preparation",
+  "stage_index": 0,
+  "stage_count": 1,
+  "revision": 5,
+  "initial_circuit": [],
+  "measured": [
+   0,
+   null
+  ],
+  "history": [
+   [
+    "h",
+    0
+   ],
+   [
+    "cx",
+    0,
+    1
+   ],
+   [
+    "run_circuit"
+   ],
+   [
+    "measure",
+    0,
+    0
+   ]
+  ],
+  "gates_left": 0,
+  "terminal_uses_left": {
+   "alice_h": 0,
+   "bob_cx": 0
+  },
+  "objects": {
+   "door_A": "0",
+   "door_B": "0"
+  },
+  "objective": {
+   "status": "pending",
+   "quantum_ready": false,
+   "failure_policy": "retry_stage",
+   "required_measurements": [
+    0,
+    1
+   ]
+  },
+  "source": "statevector_fallback",
+  "sampling": {
+   "source": "statevector_fallback",
+   "counts": {},
+   "shots": 0,
+   "reason": "not_precomputed",
+   "backend": null
+  },
+  "last_measurement": {
+   "qubit": 0,
+   "outcome": 0,
+   "source": "statevector_fallback",
+   "reason": "not_precomputed",
+   "discarded_shots": 0,
+   "state_key": "dcb205fc712d",
+   "conditioned": false
+  },
+  "circuit_validation": {
+   "required": true,
+   "validated": true,
+   "status": "measuring",
+   "target_bell": "Phi+",
+   "required_sequence": [
+    [
+     "h",
+     0
+    ],
+    [
+     "cx",
+     0,
+     1
+    ]
+   ]
+  },
+  "measurement_enabled": true,
+  "exits_unlocked": false,
+  "door_states": {
+   "door_A": "closed",
+   "door_B": "closed"
+  }
+ },
+ "complete_0": {
+  "num_qubits": 2,
+  "ket": "1|00⟩",
+  "amplitudes": [
+   [
+    1.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ]
+  ],
+  "probs": {
+   "00": 1.0,
+   "10": 0.0,
+   "01": 0.0,
+   "11": 0.0
+  },
+  "marginals": [
+   [
+    1.0,
+    0.0
+   ],
+   [
+    1.0,
+    0.0
+   ]
+  ],
+  "entangled": false,
+  "bell_label": null,
+  "state_key": "2b650292a514",
+  "schema_version": 2,
+  "level_id": "level1",
+  "stage_id": "bell_preparation",
+  "stage_index": 0,
+  "stage_count": 1,
+  "revision": 6,
+  "initial_circuit": [],
+  "measured": [
+   0,
+   0
+  ],
+  "history": [
+   [
+    "h",
+    0
+   ],
+   [
+    "cx",
+    0,
+    1
+   ],
+   [
+    "run_circuit"
+   ],
+   [
+    "measure",
+    0,
+    0
+   ],
+   [
+    "measure",
+    1,
+    0
+   ]
+  ],
+  "gates_left": 0,
+  "terminal_uses_left": {
+   "alice_h": 0,
+   "bob_cx": 0
+  },
+  "objects": {
+   "door_A": "0",
+   "door_B": "0"
+  },
+  "objective": {
+   "status": "ready",
+   "quantum_ready": true,
+   "failure_policy": "retry_stage",
+   "required_measurements": [
+    0,
+    1
+   ]
+  },
+  "source": "statevector_fallback",
+  "sampling": {
+   "source": "statevector_fallback",
+   "counts": {},
+   "shots": 0,
+   "reason": "not_precomputed",
+   "backend": null
+  },
+  "last_measurement": {
+   "qubit": 1,
+   "outcome": 0,
+   "source": "statevector_fallback",
+   "reason": "not_precomputed",
+   "discarded_shots": 0,
+   "state_key": "2b650292a514",
+   "conditioned": false
+  },
+  "circuit_validation": {
+   "required": true,
+   "validated": true,
+   "status": "complete",
+   "target_bell": "Phi+",
+   "required_sequence": [
+    [
+     "h",
+     0
+    ],
+    [
+     "cx",
+     0,
+     1
+    ]
+   ]
+  },
+  "measurement_enabled": false,
+  "exits_unlocked": true,
+  "door_states": {
+   "door_A": "open",
+   "door_B": "open"
+  }
+ },
+ "measured_q0_1": {
+  "num_qubits": 2,
+  "ket": "1|11⟩",
+  "amplitudes": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ],
+   [
+    1.0,
+    0.0
+   ]
+  ],
+  "probs": {
+   "00": 0.0,
+   "10": 0.0,
+   "01": 0.0,
+   "11": 1.0
+  },
+  "marginals": [
+   [
+    0.0,
+    1.0
+   ],
+   [
+    0.0,
+    1.0
+   ]
+  ],
+  "entangled": false,
+  "bell_label": null,
+  "state_key": "b908104f1a65",
+  "schema_version": 2,
+  "level_id": "level1",
+  "stage_id": "bell_preparation",
+  "stage_index": 0,
+  "stage_count": 1,
+  "revision": 5,
+  "initial_circuit": [],
+  "measured": [
+   1,
+   null
+  ],
+  "history": [
+   [
+    "h",
+    0
+   ],
+   [
+    "cx",
+    0,
+    1
+   ],
+   [
+    "run_circuit"
+   ],
+   [
+    "measure",
+    0,
+    1
+   ]
+  ],
+  "gates_left": 0,
+  "terminal_uses_left": {
+   "alice_h": 0,
+   "bob_cx": 0
+  },
+  "objects": {
+   "door_A": "1",
+   "door_B": "1"
+  },
+  "objective": {
+   "status": "pending",
+   "quantum_ready": false,
+   "failure_policy": "retry_stage",
+   "required_measurements": [
+    0,
+    1
+   ]
+  },
+  "source": "statevector_fallback",
+  "sampling": {
+   "source": "statevector_fallback",
+   "counts": {},
+   "shots": 0,
+   "reason": "not_precomputed",
+   "backend": null
+  },
+  "last_measurement": {
+   "qubit": 0,
+   "outcome": 1,
+   "source": "statevector_fallback",
+   "reason": "not_precomputed",
+   "discarded_shots": 0,
+   "state_key": "dcb205fc712d",
+   "conditioned": false
+  },
+  "circuit_validation": {
+   "required": true,
+   "validated": true,
+   "status": "measuring",
+   "target_bell": "Phi+",
+   "required_sequence": [
+    [
+     "h",
+     0
+    ],
+    [
+     "cx",
+     0,
+     1
+    ]
+   ]
+  },
+  "measurement_enabled": true,
+  "exits_unlocked": false,
+  "door_states": {
+   "door_A": "closed",
+   "door_B": "closed"
+  }
+ },
+ "complete_1": {
+  "num_qubits": 2,
+  "ket": "1|11⟩",
+  "amplitudes": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0
+   ],
+   [
+    1.0,
+    0.0
+   ]
+  ],
+  "probs": {
+   "00": 0.0,
+   "10": 0.0,
+   "01": 0.0,
+   "11": 1.0
+  },
+  "marginals": [
+   [
+    0.0,
+    1.0
+   ],
+   [
+    0.0,
+    1.0
+   ]
+  ],
+  "entangled": false,
+  "bell_label": null,
+  "state_key": "b908104f1a65",
+  "schema_version": 2,
+  "level_id": "level1",
+  "stage_id": "bell_preparation",
+  "stage_index": 0,
+  "stage_count": 1,
+  "revision": 6,
+  "initial_circuit": [],
+  "measured": [
+   1,
+   1
+  ],
+  "history": [
+   [
+    "h",
+    0
+   ],
+   [
+    "cx",
+    0,
+    1
+   ],
+   [
+    "run_circuit"
+   ],
+   [
+    "measure",
+    0,
+    1
+   ],
+   [
+    "measure",
+    1,
+    1
+   ]
+  ],
+  "gates_left": 0,
+  "terminal_uses_left": {
+   "alice_h": 0,
+   "bob_cx": 0
+  },
+  "objects": {
+   "door_A": "1",
+   "door_B": "1"
+  },
+  "objective": {
+   "status": "ready",
+   "quantum_ready": true,
+   "failure_policy": "retry_stage",
+   "required_measurements": [
+    0,
+    1
+   ]
+  },
+  "source": "statevector_fallback",
+  "sampling": {
+   "source": "statevector_fallback",
+   "counts": {},
+   "shots": 0,
+   "reason": "not_precomputed",
+   "backend": null
+  },
+  "last_measurement": {
+   "qubit": 1,
+   "outcome": 1,
+   "source": "statevector_fallback",
+   "reason": "not_precomputed",
+   "discarded_shots": 0,
+   "state_key": "b908104f1a65",
+   "conditioned": false
+  },
+  "circuit_validation": {
+   "required": true,
+   "validated": true,
+   "status": "complete",
+   "target_bell": "Phi+",
+   "required_sequence": [
+    [
+     "h",
+     0
+    ],
+    [
+     "cx",
+     0,
+     1
+    ]
+   ]
+  },
+  "measurement_enabled": false,
+  "exits_unlocked": true,
+  "door_states": {
+   "door_A": "open",
+   "door_B": "open"
+  }
+ }
+}

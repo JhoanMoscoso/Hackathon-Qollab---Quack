@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import pytest
 from qiskit.providers.basic_provider import BasicSimulator
@@ -119,3 +120,76 @@ def test_partial_malformed_results_fallback_and_engine_integration():
 def test_invalid_backend_counts_rejected(raw):
     with pytest.raises(ValueError):
         SamplingCache.normalize_counts(raw, 2, 50)
+
+
+# ---- Phi+ measurement must be 50/50, not frozen to one 200-shot histogram ----
+
+def _phi_plus_engine(seed=None, precompute=True):
+    engine = Engine(seed=seed)
+    if precompute:
+        asyncio.run(engine.precompute(None, 200))
+    return engine
+
+
+def _first_outcome(engine):
+    """Fresh L1 session: Alice H, Bob CX, RUN, measure q0. Returns the bit q0 collapses to."""
+    engine.new_session("level1")
+    engine.apply_gate("h", 0, actor="alice")
+    engine.apply_gate("cx", 0, 1, actor="bob")
+    engine.run_circuit()
+    return json.loads(engine.measure(0))["outcome"]
+
+
+def _skewed_seed(low=86, high=114):
+    """A seed whose local 200-shot Phi+ histogram is visibly lopsided (the quantisation noise of one precompute)."""
+    for seed in range(200):
+        engine = _phi_plus_engine(seed)
+        _first_outcome(engine)
+        counts = engine.sampling.records[canonical_key(engine.position.sv)].counts
+        if not low <= counts.get("00", 0) <= high:
+            return seed
+    raise AssertionError("no skewed 200-shot histogram found")
+
+
+def test_local_precompute_histogram_does_not_bias_phi_plus_measurement():
+    """Root cause of 'Phi+ always lands on 00': measure() resampled forever from ONE finite 200-shot
+    statevector histogram, so a process whose precompute drew e.g. 116/84 measured 58/42 for its whole life.
+    Local (statevector_fallback) records must not be a frozen source; only backend counts are."""
+    engine = _phi_plus_engine(_skewed_seed())
+    zeros = sum(_first_outcome(engine) == 0 for _ in range(1500))
+    assert abs(zeros / 1500 - 0.5) < 0.04, zeros
+
+
+@pytest.mark.parametrize("precompute", [False, True])
+def test_phi_plus_first_outcome_is_fair_across_400_fresh_sessions(precompute):
+    engine = _phi_plus_engine(precompute=precompute)
+    zeros = sum(_first_outcome(engine) == 0 for _ in range(400))
+    assert abs(zeros / 400 - 0.5) < 0.1, zeros
+
+
+def test_independent_unseeded_engines_do_not_replay_the_same_outcomes():
+    sequences = {tuple(_first_outcome(engine) for _ in range(64))
+                 for engine in (_phi_plus_engine(), _phi_plus_engine(), _phi_plus_engine(precompute=False))}
+    assert len(sequences) == 3
+
+
+def test_phi_plus_is_fair_across_reset_stage_in_one_session():
+    engine = _phi_plus_engine()
+    engine.new_session("level1")
+    outcomes = []
+    for _ in range(400):
+        engine.reset_stage()
+        engine.apply_gate("h", 0, actor="alice")
+        engine.apply_gate("cx", 0, 1, actor="bob")
+        engine.run_circuit()
+        outcomes.append(json.loads(engine.measure(0))["outcome"])
+    assert abs(sum(o == 0 for o in outcomes) / 400 - 0.5) < 0.1
+
+
+def test_backend_counts_remain_the_draw_source_for_backend_records():
+    """Hardware-like noise is intentional: a 'backend' record still defines the distribution (with replacement)."""
+    cache = SamplingCache(seed=12)
+    sv = Statevector([2 ** -0.5, 0, 0, 2 ** -0.5])
+    cache.records[canonical_key(sv)] = Distribution({"00": 10, "11": 190}, "backend")
+    ones = sum(cache.measure(sv, (None, None), 0)[0] for _ in range(400))
+    assert ones > 340  # ~95% follow the backend histogram, not the ideal 50%

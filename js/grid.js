@@ -15,11 +15,12 @@ export function isWall(grid, x, y) {
 }
 
 /**
- * Parse a level JSON ({ map, legend, objects, terminals }) into a grid description.
- * Throws a clear Error if the map is malformed or spawns are missing.
+ * Parse a flat stage view ({ map, legend, objects, terminals }, see level_adapter.stageView)
+ * into a grid description. Terminal cells are already [x, y]. Throws a clear Error if the map
+ * is malformed or spawns are missing. `decorations` (optional) become grid.decorations, default [].
  */
 export function parseLevel(level) {
-  const { map, legend = {}, objects: objectCfg = {}, terminals: terminalCfg = [] } = level;
+  const { map, legend = {}, objects: objectCfg = {}, terminals: terminalCfg = [], decorations: decorationCfg = [] } = level;
   const id = level.id ?? '?';
   if (!Array.isArray(map) || map.length !== ROWS) {
     throw new Error(`Level "${id}": map must have ${ROWS} rows, got ${Array.isArray(map) ? map.length : typeof map}`);
@@ -41,6 +42,10 @@ export function parseLevel(level) {
     terminals: [],
     cnot: null,
     exits: { alice: null, bob: null },
+    // Visual layer only: never read by collision, interaction or the engine. cell = top-left [x, y].
+    decorations: decorationCfg.map((d) => ({
+      sprite: d.sprite, cell: [d.cell[0], d.cell[1]], footprint: d.footprint ? [d.footprint[0], d.footprint[1]] : [1, 1],
+    })),
   };
 
   const cnot = {};
@@ -55,13 +60,20 @@ export function parseLevel(level) {
       else if (name === 'bob_start') grid.spawns.bob = cell;
       else if (name === 'cnot_control') cnot.control = cell;
       else if (name === 'cnot_target') cnot.target = cell;
+      else if (/^shared_cx(_target)?$/.test(name)) { // legend value = terminal id (+ "_target" for the target cell)
+        cnot[name.endsWith('_target') ? 'target' : 'control'] = cell;
+        cnot.terminalId = name.replace(/_target$/, '');
+      }
       else if (name === 'cnot_control/target') cnotBoth.push(cell);
       else if (name === 'exit_A') grid.exits.alice = cell;
       else if (name === 'exit_B') grid.exits.bob = cell;
       else if (sensor) grid.sensors.push({ qubit: Number(sensor[1]), cell });
       else if (name in objectCfg) {
-        const { qubit, open_on, lethal } = objectCfg[name];
-        grid.objects.push({ name, cell, qubit, open_on, lethal: !!lethal });
+        const { qubit, open_on, lethal, blocking, type, unlock_when } = objectCfg[name];
+        // qubit is undefined for objective-bound joint locks; blocking:false = indicator only
+        grid.objects.push({
+          name, cell, qubit, open_on, lethal: !!lethal, blocking: blocking !== false, type, unlock_when,
+        });
       }
     }
   }
@@ -76,13 +88,25 @@ export function parseLevel(level) {
   }
   if (cnot.control && cnot.target) grid.cnot = cnot;
 
-  for (const t of terminalCfg) {
-    const [x, y] = t.cell;
-    // The map may omit a terminal legend char (spec-style levels): any in-bounds non-wall cell is fine.
-    if (isWall({ tiles }, x, y)) {
-      throw new Error(`Level "${id}": terminal at [${x},${y}] is out of bounds or on a wall`);
+  // The map may omit a terminal legend char (spec-style levels): any in-bounds non-wall cell is fine.
+  const checkCell = (cell) => {
+    if (!Array.isArray(cell) || isWall({ tiles }, cell[0], cell[1])) {
+      throw new Error(`Level "${id}": terminal at [${cell}] is out of bounds or on a wall`);
     }
-    grid.terminals.push({ cell: [x, y], gate: t.gate, owner: t.owner, uses: t.uses });
+    return [cell[0], cell[1]];
+  };
+  for (const t of terminalCfg) {
+    // Co-op CX (L3): control cell + target cell, never a plain gate terminal. A CX without target_cell
+    // (L1: Bob's own terminal, activation "owner") is an ordinary owner terminal below.
+    if (t.gate === 'cx' && t.target_cell) {
+      grid.cnot = {
+        control: checkCell(t.cell), target: checkCell(t.target_cell), terminalId: t.id, owner: t.owner, uses: t.uses,
+      };
+      continue;
+    }
+    grid.terminals.push({
+      cell: checkCell(t.cell), id: t.id, gate: t.gate, owner: t.owner, qubit: t.qubit, target: t.target, uses: t.uses,
+    });
   }
 
   return grid;
