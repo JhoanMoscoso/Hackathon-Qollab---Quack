@@ -92,3 +92,18 @@ Para puertas, sensores y salidas, define una tabla de estados explícita (por ej
 5. Prueba Lab/Prison/Core, HUD, audio y accesibilidad en el canvas de 640×384.
 
 El arte actual es provisional. Ajusta la tabla de coordenadas conforme el equipo valide cada tile en el juego; no edites el atlas a mano sin actualizar `assets/spritesheet.txt` y las referencias del código.
+
+## Decoraciones de laboratorio — Nivel 1
+
+El atlas `assets/lab_decorations.png` debe tratarse como una **biblioteca visual separada** del atlas principal. No reemplaza `assets/spritesheet.png` ni cambia las referencias de Alice, Bob, H, CX/CNOT, M, sensores, puertas o salidas.
+
+- Carga la imagen decorativa por separado y crea un registro de sprites con coordenadas/recortes verificados.
+- Mantén las decoraciones en una capa o lista de datos independiente (por ejemplo, `level.decorations`).
+- Por defecto, tanques, plantas, tapetes, luces, rejillas y conductos son no sólidos y no interactivos.
+- Computadores/mesas solo deben bloquear el movimiento si su huella se marca explícitamente como sólida y se comprueba que no interrumpe el camino.
+- No dibujes decoración encima de las consolas H/CX/M, sensores, puertas, spawns ni pasos del divisor central.
+- Reserva un corredor transitable de al menos un tile lógico de ancho desde cada spawn hacia sus objetivos.
+- Dibuja en este orden: suelo y paredes; detalles de suelo; decoraciones; consolas/sensores/puertas; jugadores; efectos y HUD.
+- La decoración no debe modificar el estado cuántico, el orden de compuertas, la medición, la colisión de las puertas ni la condición de victoria.
+
+Consulta `docs/level1_calibration_map.txt` para un borrador de distribución y una lista de colocación. Es un plano conceptual, no un reemplazo directo de las coordenadas que ya usa el código: antes de aplicarlo, conserva los IDs y posiciones actuales de los objetos interactivos y traduce únicamente las decoraciones a la estructura de mapa real.

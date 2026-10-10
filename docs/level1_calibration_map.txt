@@ -1,0 +1,93 @@
+ENTANGLED — LEVEL 1: CALIBRATION CHAMBER
+Map draft v1 — logical grid: 20 columns x 12 rows
+Each character is one 16x16 logical tile. Render at 2x (32x32 screen px).
+This is a placement proposal; validate against the existing game coordinates before replacing its map.
+
+SYMBOLS
+# = solid wall
+. = walkable floor
+A = Alice spawn (walkable spawn tile)
+B = Bob spawn (walkable spawn tile)
+H = Hadamard console (interactive; keep clear)
+C = CNOT/CX console (interactive; keep clear)
+M = measurement console (interactive; keep clear)
+D = exit door (interactive; preserve current door logic)
+S = sensor/terminal (interactive; preserve current sensor logic)
+t = specimen tank decoration (non-solid; occupies tile visually)
+p = plant decoration (non-solid)
+c = computer/desk decoration (solid only if existing collision rules say so)
+r = floor mat/rug decoration (non-solid)
+g = grate/floor detail (non-solid)
+l = lab light/wall detail (non-solid)
+= = energy conduit decoration (non-solid; do not use as a wall)
+| = central divider / existing partition (solid except for existing passages)
+
+PLACEMENT RULES
+- H, C, M, D and S are gameplay objects. Do not replace, move, or rename them if the existing code
+  references fixed coordinates; use this map only after mapping these symbols to current coordinates.
+- Decorations never modify quantum state, gate order, measurements, door state, or collision logic.
+- Keep a clear walking lane at least one tile wide from each spawn to its console and exit.
+- Do not put tanks, plants, desks, rugs, or conduits on top of H/C/M/D/S or spawn tiles.
+- Suggested tank footprint is 2x2 tiles; plant 1x2; desk/computer 2x2. These are footprints, not single symbols.
+  Reserve all covered tiles when placing a large prop in the actual renderer.
+- Columns 9 and 10 remain the central divider as specified by the integration guide. Existing passages
+  through the divider must be preserved by the game's current map/collision data.
+- The ASCII grid is a conceptual layout guide; because props can occupy multiple tiles, use the
+  placement list below as the authoritative decoration placement proposal.
+
+GRID (20 columns x 12 rows; row numbers 00-11)
+    00000000001111111111
+    01234567890123456789
+00  ####################
+01  #t..l...#|#...l..t..#
+02  #......D#|#D.......#
+03  #.A....H#|#C....B..#
+04  #.......#|#........#
+05  #p......#|#......p.#
+06  #....r..#|#..r.....#
+07  #.......#|#........#
+08  #g......#|#......g.#
+09  #......M#S#M.......#
+10  #.......#|#........#
+11  ####################
+
+IMPORTANT GRID NOTE
+This draft shows intended zones, not a drop-in replacement for the game's existing map. The divider
+and passages are schematic: preserve the project's current collision map and interactive coordinates.
+If the current implementation uses a different map encoding, translate these placements into that format
+rather than replacing the engine's H/CX/measurement/door data.
+
+DECORATION PLACEMENT PLAN (tile coordinates: column, row; zero-based)
+Left/Alice room:
+- Specimen tank A: top-left footprint (1, 1), size 2x2; decorative, non-solid.
+- Wall light: (4, 1), size 1x1.
+- Plant: (1, 5), size 1x2.
+- Floor mat: (4, 6), size 2x1; visual only.
+- Floor grate: (1, 8), size 2x1; visual only.
+- Optional small lab computer: (2, 4), size 2x2 ONLY if this does not block the route from spawn to H.
+
+Right/Bob room:
+- Specimen tank B: top-left footprint (17, 1), size 2x2; decorative, non-solid.
+- Wall light: (15, 1), size 1x1.
+- Plant: (17, 5), size 1x2.
+- Floor mat: (12, 6), size 2x1; visual only.
+- Floor grate: (17, 8), size 2x1; visual only.
+- Optional computer: (15, 4), size 2x2 ONLY if this does not block the route from spawn to CX/measurement.
+
+INTERACTIVE ELEMENTS TO PRESERVE
+- Alice spawn and q0 assignment.
+- Bob spawn and q1 assignment.
+- H operation on q0.
+- CX operation with q0 as control and q1 as target.
+- Measurement consoles and measurement event handlers.
+- Existing exit door coordinates and open/closed state transitions.
+- Sensors, collision boundaries, and the central divider/passage.
+- Circuit validation and win condition.
+
+IMPLEMENTATION SAFETY
+1. Keep decorations in a separate `decorations` layer/list; don't encode them as gate/door entities.
+2. Draw floor and wall tiles first, then decorations, then interactive consoles/doors, then players and effects.
+3. Decorations should be non-interactive by default. If a desk is intended to block movement, explicitly mark its footprint solid.
+4. Don't change event handlers or quantum-engine calls while adding decorations.
+5. Test movement from each spawn to H/CX, measurement, and exits. Confirm no decoration overlaps a hitbox.
+6. Render at nearest-neighbor / `imageSmoothingEnabled = false`.
