@@ -198,6 +198,17 @@ test('sensor before a validated RUN gives a hint instead of a measure event (no 
   assert.deepEqual(stepPlayer(w, 'alice', 1, 0, legacy)[1], { type: 'measure', qubit: 0 });
 });
 
+test('per-qubit measurement permission overrides the legacy global flag', () => {
+  const w = w1();
+  const snap = { ...l1snap(), measured: [null, null], measurement_enabled: false, measurement_allowed: [true, false] };
+  assert.deepEqual(sensorsUnderPlayers(w, snap), []); // Spawns/terminals are not sensors.
+  place(w, 'alice', 2, 4);
+  assert.equal(stepPlayer(w, 'alice', 1, 0, snap)[1].type, 'measure');
+  place(w, 'bob', 12, 4);
+  assert.deepEqual(stepPlayer(w, 'bob', 1, 0, snap)[1], { type: 'info', reason: 'measurement_locked' });
+  assert.deepEqual(sensorsUnderPlayers(w, snap), [{ type: 'measure', qubit: 0 }]);
+});
+
 test('gate terminal: event payload carries terminalId, actor and target -1; interact does not consume', () => {
   const w = w1();
   const t = w.terminals[0];
@@ -255,21 +266,18 @@ test('terminal uses come from snap.terminal_uses_left when present (engine is th
   assert.equal(interact(w, 'alice', l1snap('initial'))[0].type, 'gate');
 });
 
-test('uses: null means unlimited (level2 feed_forward bob_x)', () => {
-  const w = worldOf(2, 1);
-  const t = w.terminals[0];
-  assert.equal(t.usesLeft, Infinity);
-  place(w, 'bob', 13, 1);
-  const snap = objSnap({}, { terminal_uses_left: { bob_x_feed_forward: null } });
-  for (let i = 0; i < 3; i++) {
-    const ev = interact(w, 'bob', snap);
-    assert.equal(ev[0].type, 'gate');
-    assert.equal(ev[0].terminalId, 'bob_x_feed_forward');
-    assert.equal(ev[0].qubit, 1);
-    consumeTerminal(ev[0].terminal);
-  }
-  assert.equal(t.usesLeft, Infinity);
-  assert.equal(interact(w, 'bob', snap)[0].type, 'gate');
+test('level2 Bob X terminal honors the engine use count', () => {
+  const w = worldOf(2);
+  const t = w.terminals.find((terminal) => terminal.id === 'bob_x');
+  assert.equal(t.usesLeft, 1);
+  place(w, 'bob', t.x, t.y);
+  const snap = objSnap({}, { terminal_uses_left: { bob_x: 1 } });
+  const ev = interact(w, 'bob', snap);
+  assert.equal(ev[0].type, 'gate');
+  assert.equal(ev[0].terminalId, 'bob_x');
+  assert.equal(ev[0].qubit, 1);
+  consumeTerminal(ev[0].terminal);
+  assert.equal(interact(w, 'bob', { ...snap, terminal_uses_left: { bob_x: 0 } })[0].reason, 'terminal_used');
 });
 
 test('interact on an empty cell does nothing', () => {

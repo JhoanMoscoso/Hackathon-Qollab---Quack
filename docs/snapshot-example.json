@@ -9,27 +9,34 @@
   "state_key": "dcb205fc712d",
   "schema_version": 2,
   "level_id": "level2",
-  "stage_id": "opposites",
+  "stage_id": "bell_block",
   "stage_index": 0,
-  "stage_count": 2,
+  "stage_count": 1,
   "revision": 1,
   "initial_circuit": [["h", 0], ["cx", 0, 1]],
   "measured": [null, null],
   "history": [],
-  "gates_left": 1,
-  "terminal_uses_left": {"bob_x_opposites": 1},
-  "objects": {
-    "door_A_north": "super", "door_A_south": "super",
-    "door_B_north": "super", "door_B_south": "super"
-  },
+  "gates_left": 2,
+  "terminal_uses_left": {"alice_x": 1, "bob_x": 1},
+  "objects": {"door_A": "super", "door_B": "super"},
   "objective": {
     "status": "pending", "quantum_ready": false,
-    "failure_policy": "death", "required_measurements": [0, 1]
+    "failure_policy": "retry_stage", "required_measurements": [0, 1]
   },
   "source": "statevector_fallback",
   "sampling": {
     "source": "statevector_fallback", "counts": {}, "shots": 0,
     "reason": "not_precomputed", "backend": null
   },
-  "last_measurement": null
+  "last_measurement": null,
+  "feed_forward": {
+    "phase": "prepare_bob", "sender": "bob", "receiver": "alice", "required_correction": null
+  },
+  "classical_channel": {
+    "sender": "bob", "receiver": "alice", "sent": false, "received": false, "value": null
+  },
+  "measurement_allowed": [false, false],
+  "measurement_enabled": false,
+  "exits_unlocked": false,
+  "door_states": {"door_A": "closed", "door_B": "closed"}
 }

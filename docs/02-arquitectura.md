@@ -84,11 +84,13 @@ Todo lo que cruza el puente JS↔Python viaja como **string JSON** (`json.dumps`
 
 ## Estrategia "un job por Run" (IonQ)
 
-1. Antes de enviar, `enumerate.py` hace BFS de **todas las etapas de la campaña** con budgets/usos/mediciones y prueba RUN de L1; dedupe físico para la tabla. Cache/guard duran el Run, no nivel. Revisión local nueva: 20 estados físicos, cuatro etapas; las pruebas Qollab históricas usaron 21. Contrato en 03 y 06 §9.
+1. Antes de enviar, BFS de las tres etapas actuales considera budgets/usos/mediciones, prueba RUN de L1 y fases SEND/RECEIVE/corrección de L2. Catálogo físico20; cache/guard duran todo el Run. Las primeras pruebas históricas tenían21. Contratos 03 y 06 §9–10.
 2. Para 2 qubits con compuertas Clifford el conjunto cabe en ≤ 60 estados (estados estabilizadores); con presupuesto 6 suele ser 15–40. Para 3 qubits se limita por presupuesto.
 3. `StatePreparation` sin reset + medida y transpilación. **Modo por defecto packed**, alineado con `07-level-design-constraints.md`: diez estados prioritarios en pares independientes de un único circuito de veinte qubits; se decodifican counts por par mediante un manifest explícito de bits clásicos. Si el backend declara menos capacidad se reduce el pack. Otros estados usan Qiskit local; falla de envío/resultado → fallback sin reenviar. `single` queda como modo de un Bell y `batch` como opt-in solo para compatibles. **Motor, pack y puente JS de diagnóstico probados en Qollab built-in y Forte**; el recorrido/adaptación del juego sigue pendiente.
 
-   **L1 revisado localmente:** inicio |00⟩, H Alice y CX Bob, después `run_circuit` verifica preparación. RUN no equivale a backend.run ni hace otro job. Sensores bloqueados antes de validar; puertas físicas por prueba+ambas medidas iguales, no por el bit local. Prioridades nuevas incluyen Ψ⁻ en vez de |++⟩; diez pares siguen cabiendo, pero ese manifest nuevo aún no fue probado en Qollab. Ver 06 §9 y snapshot L1.
+   **L1 revisado y validado en Qollab Python en ambos backends:** inicio |00⟩, H Alice/CX Bob, después `run_circuit` valida sin otro job. Sensores bloqueados antes; puertas por prueba+ambas medidas iguales, no bit local. Manifest nuevo (Ψ⁻ en vez de |++⟩, 20 estados/diez pares) pasó; rama 11 abre ambas puertas y reset relock. UI/escape del juego pendiente; evidencia 06 §9.
+
+   **L2 revisado:** re-preparar Φ⁺; BobX/medida→SEND→AliceRECEIVE→Xsi0/KEEPsi1→Alice0. Mensaje/corrección son acciones locales sin job; fases y permisos por qubit se exponen al HUD. 00/01 finales abren puertas por protocolo, no bitBob. El debugger conjunto es una vista clásica/omnisciente, no evidencia de que Alice recibe información sin canal.
 4. Resultado: `counts[state_key]`. En juego, medir el qubit k en el estado S = sacar un shot de `counts[S]` y leer el bit k. El estado post-medición se calcula con `Statevector` y se busca su key para la siguiente medición.
 5. Si `backend.run` falla (IonQ caído, lista no soportada), fallback: `Statevector(S).sample_counts(shots)` por estado. Se informa en el debugger ("sampled locally").
 

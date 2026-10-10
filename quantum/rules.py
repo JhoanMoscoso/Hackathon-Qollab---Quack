@@ -24,6 +24,7 @@ class Position:
     uses_left: tuple[int | None, ...]
     circuit_validated: bool = False
     preparation_history: tuple[tuple, ...] | None = None
+    feed_forward_phase: str | None = None
 
 
 def start(stage: dict, num_qubits: int = 2) -> Position:
@@ -32,11 +33,14 @@ def start(stage: dict, num_qubits: int = 2) -> Position:
         getattr(circuit, op[0])(*op[1:])
     return Position(initial_state(circuit, num_qubits), (None,) * num_qubits, 0,
                     tuple(t["uses"] for t in stage["terminals"]),
-                    preparation_history=() if "validation" in stage else None)
+                    preparation_history=() if "validation" in stage else None,
+                    feed_forward_phase="prepare_bob" if "feed_forward" in stage else None)
 
 
 def objective(stage: dict, position: Position) -> str:
     if "validation" in stage and not position.circuit_validated:
+        return "pending"
+    if "feed_forward" in stage and position.feed_forward_phase != "complete":
         return "pending"
     measured = position.measured
     win = stage["win"]
@@ -57,7 +61,48 @@ def objective(stage: dict, position: Position) -> str:
 
 def logical_key(position: Position):
     return (canonical_key(position.sv), position.measured, position.gates_used,
-            position.uses_left, position.circuit_validated, position.preparation_history)
+            position.uses_left, position.circuit_validated, position.preparation_history,
+            position.feed_forward_phase)
+
+
+def _protocol_actor(stage, actor, expected):
+    if "feed_forward" not in stage:
+        raise RuleError("PROTOCOL_NOT_APPLICABLE", "This stage has no classical feed-forward channel")
+    if actor is None:
+        raise RuleError("ACTOR_REQUIRED", "Identify the player using the classical console")
+    if actor != expected:
+        raise RuleError("INVALID_ACTOR", f"This action belongs to {expected}")
+
+
+def send_bit(stage, position, actor):
+    """The message always contains Bob's observed bit; clients cannot provide a bit."""
+    _protocol_actor(stage, actor, "bob")
+    if position.feed_forward_phase in {"receive_bit", "correct_alice", "measure_alice", "complete"}:
+        return position
+    if position.feed_forward_phase != "send_bit" or position.measured[1] is None:
+        raise RuleError("PROTOCOL_ORDER", "Bob must apply X and measure before SEND BIT")
+    return replace(position, feed_forward_phase="receive_bit")
+
+
+def receive_bit(stage, position, actor):
+    _protocol_actor(stage, actor, "alice")
+    if position.feed_forward_phase in {"correct_alice", "measure_alice", "complete"}:
+        return position
+    if position.feed_forward_phase != "receive_bit" or position.measured[1] is None:
+        raise RuleError("PROTOCOL_ORDER", "Bob must SEND BIT before Alice can receive it")
+    return replace(position, feed_forward_phase="correct_alice")
+
+
+def confirm_identity(stage, position, actor):
+    """Explicit I/KEEP decision: no quantum gate, no terminal use, no backend call."""
+    _protocol_actor(stage, actor, "alice")
+    if position.feed_forward_phase in {"measure_alice", "complete"} and position.measured[1] == 1:
+        return position
+    if position.feed_forward_phase != "correct_alice":
+        raise RuleError("PROTOCOL_ORDER", "Alice must receive the bit before choosing a correction")
+    if position.measured[1] != 1:
+        raise RuleError("WRONG_CORRECTION", "Received 0: Alice must use X, not I")
+    return replace(position, feed_forward_phase="measure_alice")
 
 
 def run_circuit(stage: dict, position: Position) -> Position:
@@ -119,8 +164,8 @@ def apply(stage: dict, position: Position, gate, qubit, target=-1,
             candidates.append((index, terminal))
     if not candidates:
         raise RuleError("GATE_NOT_ALLOWED", "No terminal provides this operation")
-    if "validation" in stage and actor is None:
-        raise RuleError("ACTOR_REQUIRED", "Identify Alice or Bob when placing a validation-stage gate")
+    if ("validation" in stage or "feed_forward" in stage) and actor is None:
+        raise RuleError("ACTOR_REQUIRED", "Identify Alice or Bob when placing a protocol gate")
     if actor is not None and not any(t["owner"] == actor for _, t in candidates):
         raise RuleError("INVALID_ACTOR", "Actor does not own this terminal")
     candidates = [(i, t) for i, t in candidates if actor is None or t["owner"] == actor]
@@ -128,6 +173,16 @@ def apply(stage: dict, position: Position, gate, qubit, target=-1,
     if not available:
         raise RuleError("TERMINAL_EXHAUSTED", "This terminal has no uses left")
     index, terminal = available[0]
+    next_phase = position.feed_forward_phase
+    if "feed_forward" in stage:
+        if position.feed_forward_phase == "prepare_bob" and (gate, qubit, actor) == ("x", 1, "bob"):
+            next_phase = "measure_bob"
+        elif position.feed_forward_phase == "correct_alice" and (gate, qubit, actor) == ("x", 0, "alice"):
+            if position.measured[1] != 0:
+                raise RuleError("WRONG_CORRECTION", "Received 1: Alice must keep I, not apply X")
+            next_phase = "measure_alice"
+        else:
+            raise RuleError("PROTOCOL_ORDER", "Follow Bob X, Bob measure, SEND, RECEIVE, Alice correction")
     uses = list(position.uses_left)
     if uses[index] is not None:
         uses[index] -= 1
@@ -136,15 +191,30 @@ def apply(stage: dict, position: Position, gate, qubit, target=-1,
     if history is not None:
         history += ((gate, qubit, target) if gate == "cx" else (gate, qubit),)
     return replace(position, sv=sv, gates_used=position.gates_used + 1,
-                   uses_left=tuple(uses), preparation_history=history), terminal["id"]
+                   uses_left=tuple(uses), preparation_history=history,
+                   feed_forward_phase=next_phase), terminal["id"]
+
+
+def check_measurement(stage, position, qubit):
+    """Check permissions before sampling, and again at the pure collapse boundary."""
+    check_qubit(qubit, len(position.measured))
+    if "validation" in stage and not position.circuit_validated:
+        raise RuleError("CIRCUIT_NOT_VALIDATED", "Use RUN CIRCUIT successfully before measuring")
+    if position.measured[qubit] is not None:
+        return
+    if objective(stage, position) != "pending":
+        raise RuleError("STAGE_FINISHED", "Reset or advance the finished stage")
+    if "feed_forward" in stage:
+        expected = {"measure_bob": 1, "measure_alice": 0}.get(position.feed_forward_phase)
+        if qubit != expected:
+            raise RuleError("PROTOCOL_ORDER", "Bob measures after X; Alice measures after receiving and correcting")
 
 
 def collapse(stage: dict, position: Position, qubit: int, outcome: int) -> Position:
     check_qubit(qubit, len(position.measured))
     if type(outcome) is not int or outcome not in (0, 1):
         raise RuleError("INVALID_OUTCOME", "Outcome must be 0 or 1")
-    if "validation" in stage and not position.circuit_validated:
-        raise RuleError("CIRCUIT_NOT_VALIDATED", "Use RUN CIRCUIT successfully before measuring")
+    check_measurement(stage, position, qubit)
     if position.measured[qubit] is not None:
         if outcome != position.measured[qubit]:
             raise RuleError("INVALID_OUTCOME", "Repeated measurement cannot change its result")
@@ -156,7 +226,10 @@ def collapse(stage: dict, position: Position, qubit: int, outcome: int) -> Posit
         raise RuleError("IMPOSSIBLE_OUTCOME", "Outcome has zero ideal probability")
     measured = list(position.measured)
     measured[qubit] = outcome
-    return replace(position, sv=sv, measured=tuple(measured))
+    phase = position.feed_forward_phase
+    if "feed_forward" in stage:
+        phase = "send_bit" if qubit == 1 else "complete"
+    return replace(position, sv=sv, measured=tuple(measured), feed_forward_phase=phase)
 
 
 def actions(stage: dict, position: Position, allow_cx=True):
@@ -181,11 +254,29 @@ def actions(stage: dict, position: Position, allow_cx=True):
         else:
             result.append(("run_circuit", None))
     else:
-        result.extend(("measure", q) for q, bit in enumerate(position.measured) if bit is None)
+        for q, bit in enumerate(position.measured):
+            if bit is not None:
+                continue
+            try:
+                check_measurement(stage, position, q)
+            except RuleError:
+                continue
+            result.append(("measure", q))
+    if "feed_forward" in stage:
+        phase_actions = {"send_bit": "send_bit", "receive_bit": "receive_bit"}
+        if position.feed_forward_phase in phase_actions:
+            result.append((phase_actions[position.feed_forward_phase], None))
+        elif position.feed_forward_phase == "correct_alice" and position.measured[1] == 1:
+            result.append(("confirm_identity", None))
     return result
 
 
 def branches(stage: dict, position: Position, action: tuple):
+    protocol_actions = {"send_bit": (send_bit, "bob"), "receive_bit": (receive_bit, "alice"),
+                        "confirm_identity": (confirm_identity, "alice")}
+    if action[0] in protocol_actions:
+        transition, actor = protocol_actions[action[0]]
+        return [(1.0, None, transition(stage, position, actor))]
     if action[0] == "run_circuit":
         return [(1.0, None, run_circuit(stage, position))]
     if action[0] == "gate":

@@ -13,7 +13,7 @@
     <fieldset class="level-select">
       <legend>Level</legend>
       <label><input type="radio" name="level" value="level1" checked> 1 · Calibration Chamber</label>
-      <label><input type="radio" name="level" value="level2" disabled aria-disabled="true"> 2 · Bell Block (coming soon)</label>
+      <label><input type="radio" name="level" value="level2"> 2 · Bell Block</label>
       <label><input type="radio" name="level" value="level3"> 3 · The Core</label>
     </fieldset>
     <div class="menu-actions">
@@ -36,6 +36,16 @@
       <canvas id="canvas" width="640" height="384" tabindex="0" aria-label="Entangled game board. Move with WASD or the arrow keys, use terminals with E or Enter, run the circuit with Space. The quantum debugger on the right describes the current state; the circuit you are building is in the panel below."></canvas>
     </div>
     <aside id="debugger-state" aria-label="Quantum debugger" tabindex="0"></aside>
+    <section id="classical-console" aria-label="Bell Block classical console" hidden>
+      <h2 class="dbg-title">Classical console</h2>
+      <p id="protocol-hint" role="status"></p>
+      <p id="classical-value">Channel value: <span>hidden until Alice receives the bit</span></p>
+      <div class="protocol-actions">
+        <button id="send-bit" type="button">Bob · Send bit</button>
+        <button id="receive-bit" type="button">Alice · Receive bit</button>
+        <button id="keep-identity" type="button">Alice · Keep (I)</button>
+      </div>
+    </section>
     <div class="bottom-panel">
       <section id="debugger-circuit" aria-label="Circuit"></section>
       <p class="hud-hint">Move: WASD / Arrows · E / Enter: use terminal · Space: run circuit · Tab: switch (1P) · R: reset stage · Esc: menu</p>

@@ -40,6 +40,8 @@ Objetivo: motor cuántico completo y motor de juego sin niveles reales.
 
 **Exit gate F2:** L1 y L2 se completan de punta a punta desde el menú, con audio, en Qollab (built-in e IonQ sim).
 
+**Revisión de L2 Bell Block (2026-10-10):** el protocolo vigente es Bob X→Bob medida→SEND→Alice RECEIVE→Alice X si0 / KEEP(I) si1→Alice medida0. Motor, JSON y consola HUD se entregan con esta secuencia; esto no cierra F2 hasta realizar el recorrido real con audio en ambos backends. Re-preparar Bell al entrar: las mediciones al terminar L1 ya lo colapsaron. Mantener tres niveles y un solo job por Run; no añadir niveles/etapas antiguas para demostrar el nuevo concepto.
+
 ## Fase 3 — Nivel 3 + pulido + accesibilidad (H18 → H24)
 
 | Quién | Tarea |
