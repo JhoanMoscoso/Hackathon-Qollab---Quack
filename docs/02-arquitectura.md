@@ -91,6 +91,8 @@ Todo lo que cruza el puente JS↔Python viaja como **string JSON** (`json.dumps`
    **L1 revisado y validado en Qollab Python en ambos backends:** inicio |00⟩, H Alice/CX Bob, después `run_circuit` valida sin otro job. Sensores bloqueados antes; puertas por prueba+ambas medidas iguales, no bit local. Manifest nuevo (Ψ⁻ en vez de |++⟩, 20 estados/diez pares) pasó; rama 11 abre ambas puertas y reset relock. UI/escape del juego pendiente; evidencia 06 §9.
 
    **L2 revisado:** re-preparar Φ⁺; BobX/medida→SEND→AliceRECEIVE→Xsi0/KEEPsi1→Alice0. Mensaje/corrección son acciones locales sin job; fases y permisos por qubit se exponen al HUD. 00/01 finales abren puertas por protocolo, no bitBob. El debugger conjunto es una vista clásica/omnisciente, no evidencia de que Alice recibe información sin canal.
+
+   **L3 The Core:** H/Z de Alice y X de Bob son terminalesHUD con mismos usos/budget; CX sigue con ambas placas físicas. Diez entidades, carriles sensor→peligro→salida obligatorios. No cambia el catálogo20/pack diez pares ni el motor de evolución. Validación local/probe listos; aceptación visual y Run propio delL3 pendiente.
 4. Resultado: `counts[state_key]`. En juego, medir el qubit k en el estado S = sacar un shot de `counts[S]` y leer el bit k. El estado post-medición se calcula con `Statevector` y se busca su key para la siguiente medición.
 5. Si `backend.run` falla (IonQ caído, lista no soportada), fallback: `Statevector(S).sample_counts(shots)` por estado. Se informa en el debugger ("sampled locally").
 

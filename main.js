@@ -105,6 +105,22 @@ function refreshProtocolConsole() {
     $('receive-bit').disabled = busy || protocol.phase !== 'receive_bit';
     $('keep-identity').disabled = busy || protocol.phase !== 'correct_alice' || protocol.required_correction !== 'i';
   }
+  const core = $('core-console');
+  const isCore = level?.id === 'level3';
+  core.hidden = !isCore;
+  if (isCore) {
+    const stage = level.stages?.[snap?.stage_index ?? 0];
+    const terminals = new Map((stage?.terminals ?? []).filter((t) => t.placement === 'hud').map((t) => [t.id, t]));
+    const controls = [
+      ['core-h', 'alice_h', 0], ['core-z', 'alice_z', 0], ['core-x', 'bob_x', 1],
+    ];
+    for (const [buttonId, id, qubit] of controls) {
+      const terminal = terminals.get(id);
+      const left = snap?.terminal_uses_left?.[id] ?? terminal?.uses ?? 0;
+      $(buttonId).disabled = busy || !terminal || left <= 0 || snap?.gates_left <= 0
+        || snap?.measured?.[qubit] != null || snap?.objective?.status !== 'pending';
+    }
+  }
 }
 
 const refresh = (note = null, prev = null) => {
@@ -287,6 +303,9 @@ async function runIntent(intent, ep) {
     snap = result.snapshot ?? result;
     refresh(intent.action === 'send_bit' ? 'Bob sent the classical bit.' : intent.action === 'receive_bit' ? 'Alice received the classical bit.' : 'Alice kept the identity correction.', prev);
     events = sensorsUnderPlayers(world, snap);
+  } else if (intent.type === 'core-gate') {
+    const { gate, qubit, terminalId, actor } = intent;
+    events = [{ type: 'gate', gate, qubit, target: -1, terminalId, actor, terminal: null }];
   } else
   if (intent.type === 'run') { // RUN CIRCUIT: the engine validates the prepared state; errors show in the debugger
     const prev = snap;
@@ -325,7 +344,8 @@ async function runIntent(intent, ep) {
       const s = await call('apply_gate', ev.gate, ev.qubit, ev.target, ev.terminalId, ev.actor);
       if (ep !== epoch) return;
       if (s) {
-        snap = s; consumeTerminal(ev.terminal);
+        snap = s;
+        if (ev.terminal) consumeTerminal(ev.terminal);
         note = describeChange(prev, s, { gate: ev.gate, qubit: ev.qubit, actor: ev.actor });
         before ??= prev;
         for (const sensorEvent of sensorsUnderPlayers(world, snap)) {
@@ -343,6 +363,13 @@ async function runIntent(intent, ep) {
 function queueProtocol(action) {
   if (sm.state !== 'level' || !snap?.feed_forward || pending.length >= PENDING_CAP) return;
   const intent = { type: 'protocol', action };
+  if (busy) pending.push(intent);
+  else runIntents([intent]);
+}
+
+function queueCoreGate(gate, qubit, terminalId, actor) {
+  if (sm.state !== 'level' || level?.id !== 'level3' || pending.length >= PENDING_CAP) return;
+  const intent = { type: 'core-gate', gate, qubit, terminalId, actor };
   if (busy) pending.push(intent);
   else runIntents([intent]);
 }
@@ -386,6 +413,11 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     queueProtocol({ KeyB: 'send_bit', KeyV: 'receive_bit', KeyI: 'identity' }[e.code]);
   }
+  else if (s === 'level' && level?.id === 'level3' && ['KeyH', 'KeyZ', 'KeyX'].includes(e.code)) {
+    e.preventDefault();
+    const action = { KeyH: ['h', 0, 'alice_h', 'alice'], KeyZ: ['z', 0, 'alice_z', 'alice'], KeyX: ['x', 1, 'bob_x', 'bob'] }[e.code];
+    queueCoreGate(...action);
+  }
   else if (busy) return;
   else if (s === 'level' && e.code === 'KeyR') restartStage();
   else if (s === 'win' && (e.code === 'Enter' || e.code === 'Space')) { e.preventDefault(); sm.setState(STATES.MENU); }
@@ -395,6 +427,9 @@ $('start-2p').addEventListener('click', () => startGame('2p'));
 $('send-bit').addEventListener('click', () => queueProtocol('send_bit'));
 $('receive-bit').addEventListener('click', () => queueProtocol('receive_bit'));
 $('keep-identity').addEventListener('click', () => queueProtocol('identity'));
+$('core-h').addEventListener('click', () => queueCoreGate('h', 0, 'alice_h', 'alice'));
+$('core-z').addEventListener('click', () => queueCoreGate('z', 0, 'alice_z', 'alice'));
+$('core-x').addEventListener('click', () => queueCoreGate('x', 1, 'bob_x', 'bob'));
 reduceBox.addEventListener('change', () => renderer.setReduceMotion(reduceBox.checked));
 $('click-to-play').addEventListener('click', (e) => {
   e.currentTarget.hidden = true;
