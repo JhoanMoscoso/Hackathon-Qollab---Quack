@@ -547,3 +547,31 @@ test('decor: no decoration rectangle overlaps a gameplay cell of level 1', () =>
     }
   }
 }));
+
+test('renderer draws through setTransform(scale) so drawing keeps logical 640x384 coordinates', () => {
+  const ctx = stubCtx();
+  const canvas = { getContext: () => ctx, width: 640, height: 384 };
+  const r = createRenderer(canvas);
+  r.draw(worldOf(1), snap('0', '0'), view(), 0);
+  assert.deepEqual(ctx.calls.find((c) => c[0] === 'setTransform'), ['setTransform', 1, 0, 0, 1, 0, 0]);
+  assert.equal(canvas.width, 640);
+  ctx.calls.length = 0;
+  r.setScale(3);
+  assert.equal(canvas.width, 1920);
+  assert.equal(canvas.height, 1152);
+  assert.equal(ctx.imageSmoothingEnabled, false); // resizing resets context state: it is switched off again
+  r.draw(worldOf(1), snap('0', '0'), view(), 0);
+  assert.deepEqual(ctx.calls.find((c) => c[0] === 'setTransform'), ['setTransform', 3, 0, 0, 3, 0, 0]);
+  assert.ok(ctx.calls.some((c) => c[0] === 'clearRect' && c[3] === 640 && c[4] === 384)); // still logical units
+});
+
+test('renderer.setScale ignores an unchanged scale (resizing a canvas clears it)', () => {
+  const ctx = stubCtx();
+  let widthWrites = 0;
+  let w = 640;
+  const canvas = { getContext: () => ctx, height: 384, get width() { return w; }, set width(v) { widthWrites++; w = v; } };
+  const r = createRenderer(canvas);
+  r.setScale(2); r.setScale(2); r.setScale(0); r.setScale(NaN);
+  assert.equal(widthWrites, 1);
+  assert.equal(w, 1280);
+});

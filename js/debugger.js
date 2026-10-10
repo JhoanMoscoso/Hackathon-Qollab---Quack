@@ -181,7 +181,7 @@ function drawCircuit(svg, cols) {
   svg.replaceChildren();
   const width = LEFT + Math.max(cols.length, 4) * COL_W + 8;
   svg.setAttribute('viewBox', `0 0 ${width} 84`);
-  svg.setAttribute('width', width); // natural size: never scaled below it, the wrapper scrolls instead
+  svg.setAttribute('width', width); // natural size; CSS may scale it up to the panel height, the wrapper scrolls sideways
   svg.setAttribute('height', 84);
   PLAYER_NAMES.forEach((name, q) => {
     svg.append(svgEl('line', { x1: 66, y1: WIRE_Y[q], x2: width - 4, y2: WIRE_Y[q], class: 'c-wire' }));
@@ -211,10 +211,11 @@ function drawCircuit(svg, cols) {
 }
 
 /**
- * @param {HTMLElement} rootEl panel container (#debugger)
+ * One debugger, two containers: the state panel (ket, bars, status, note) and the circuit panel.
+ * @param {{ state: HTMLElement, circuit: HTMLElement }} roots #debugger-state and #debugger-circuit
  * @param {HTMLElement} liveEl aria-live region (#a11y-live)
  */
-export function createDebugger(rootEl, liveEl) {
+export function createDebugger({ state: stateEl, circuit: circuitEl }, liveEl) {
   const title = htmlEl('h2', 'dbg-title', 'Quantum debugger');
   const ket = htmlEl('p', 'dbg-ket');
   ket.setAttribute('aria-label', 'Quantum state');
@@ -231,7 +232,7 @@ export function createDebugger(rootEl, liveEl) {
     bars.append(row);
     return { row, fill, pct };
   });
-  const circuitTitle = htmlEl('h3', 'dbg-sub', 'Circuit');
+  const circuitTitle = htmlEl('h2', 'dbg-title', 'Circuit');
   const svg = svgEl('svg', { class: 'dbg-circuit', role: 'img', 'aria-label': 'Circuit diagram' });
   const circuitWrap = htmlEl('div', 'dbg-circuit-wrap');
   circuitWrap.tabIndex = 0; // keyboard-scrollable when the circuit outgrows the panel
@@ -257,7 +258,8 @@ export function createDebugger(rootEl, liveEl) {
   }
   const msg = htmlEl('p', 'dbg-msg');
 
-  rootEl.replaceChildren(title, ket, bars, circuitTitle, circuitWrap, stats, msg);
+  stateEl.replaceChildren(title, ket, bars, stats, msg);
+  circuitEl.replaceChildren(circuitTitle, circuitWrap);
   drawCircuit(svg, []);
 
   const announcer = createLiveAnnouncer();

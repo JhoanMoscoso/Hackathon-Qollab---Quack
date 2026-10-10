@@ -11,6 +11,7 @@ import {
 } from './js/entities.js';
 import { createInput } from './js/input.js';
 import { createRenderer } from './js/render.js';
+import { fitCanvas, debounce } from './js/layout.js';
 import { createDebugger, describeChange, hintFor } from './js/debugger.js';
 import { loadSprites } from './js/sprite_loader.js';
 import { withTimeout } from './js/async_util.js';
@@ -32,10 +33,28 @@ const NOTES = {
 };
 
 const canvas = $('canvas');
-const dbg = createDebugger($('debugger'), $('a11y-live'));
+const dbg = createDebugger({ state: $('debugger-state'), circuit: $('debugger-circuit') }, $('a11y-live'));
 const reduceBox = $('reduce-motion');
 reduceBox.checked = !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 const renderer = createRenderer(canvas, { reduceMotion: reduceBox.checked });
+
+// ---------- canvas fit ----------
+// The board cell (CSS decides its size) holds the canvas, which CSS cannot size to "largest 5:3 that fits" alone.
+// The CSS size follows the cell at once; the backing store (an integer multiple of 640x384, matched to
+// size x devicePixelRatio) is debounced because resizing a canvas clears it. render.draw() keeps logical coords.
+const board = canvas.parentElement;
+function fitCanvasToBoard(applyScale) {
+  const w = board.clientWidth, h = board.clientHeight;
+  if (!w || !h) return; // game screen hidden
+  const fitted = fitCanvas({ availW: w, availH: h, dpr: globalThis.devicePixelRatio || 1 });
+  canvas.style.width = `${fitted.cssW}px`;
+  canvas.style.height = `${fitted.cssH}px`;
+  if (applyScale) renderer.setScale(fitted.scale);
+}
+const refitDebounced = debounce(() => fitCanvasToBoard(true), 100);
+const onBoardResize = () => { fitCanvasToBoard(false); refitDebounced(); };
+window.addEventListener('resize', onBoardResize);
+if (typeof ResizeObserver === 'function') new ResizeObserver(onBoardResize).observe(board);
 
 let level = null, grid = null, world = null, snap = null, lastMeasure = null;
 let input = null, mode = '1p', overlay = null, busy = false;
@@ -123,6 +142,7 @@ const sm = createStateMachine({
     overlay = next === 'dead' || next === 'win' ? next : null;
     if (next === 'menu') { input?.dispose(); input = null; }
     if (next === 'level') showMenuError(null);
+    if (SCREENS[next] === 'game') fitCanvasToBoard(true);
     if ($('click-to-play').hidden) focusTarget().focus();
   },
 });

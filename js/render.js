@@ -460,6 +460,7 @@ function drawOverlay(ctx, view) {
 export function createRenderer(canvas, { reduceMotion = false } = {}) {
   const ctx = canvas.getContext('2d');
   let reduce = reduceMotion;
+  let scale = 1; // backing-store pixels per logical pixel; draw() applies it with setTransform
   ctx.imageSmoothingEnabled = false;
   // Per-player facing and walk timer, derived from cell changes between draws (renderer-local, no game state).
   const motion = {
@@ -483,6 +484,15 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
 
   return {
     setReduceMotion(b) { reduce = !!b; },
+    /** Integer backing-store scale (see layout.fitCanvas). Resizing clears the canvas; the next draw() repaints it. */
+    setScale(n) {
+      const next = Math.round(n);
+      if (!(next >= 1) || next === scale) return;
+      scale = next;
+      canvas.width = WIDTH * scale;
+      canvas.height = HEIGHT * scale;
+      ctx.imageSmoothingEnabled = false; // a resize resets the context state
+    },
     /**
      * @param world entities.createWorld() result
      * @param snap engine snapshot
@@ -491,6 +501,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
      */
     draw(world, snap, view, t = 0) {
       ctx.imageSmoothingEnabled = false;
+      ctx.setTransform(scale, 0, 0, scale, 0, 0); // draw in logical 640x384 units whatever the backing size
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
       drawFloor(ctx);
       drawWalls(ctx, world.grid);

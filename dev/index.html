@@ -46,10 +46,13 @@
 
   <section id="game" aria-label="Game" hidden>
     <div class="board">
-      <canvas id="canvas" width="640" height="384" tabindex="0" aria-label="Entangled game board. Move with WASD or the arrow keys, use terminals with E or Enter, run the circuit with Space. The quantum debugger beside it describes the current state."></canvas>
+      <canvas id="canvas" width="640" height="384" tabindex="0" aria-label="Entangled game board. Move with WASD or the arrow keys, use terminals with E or Enter, run the circuit with Space. The quantum debugger on the right describes the current state; the circuit you are building is in the panel below."></canvas>
+    </div>
+    <aside id="debugger-state" aria-label="Quantum debugger" tabindex="0"></aside>
+    <div class="bottom-panel">
+      <section id="debugger-circuit" aria-label="Circuit"></section>
       <p class="hud-hint">Move: WASD / Arrows · E / Enter: use terminal · Space: run circuit · Tab: switch (1P) · R: reset stage · Esc: menu</p>
     </div>
-    <aside id="debugger" aria-label="Quantum debugger"></aside>
     <div id="narrator"></div>
   </section>
 </main>
