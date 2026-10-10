@@ -1,0 +1,4 @@
+# Local verification only; Qollab already provides Qiskit/numpy.
+qiskit>=2.5.2,<3
+numpy>=2,<3
+pytest>=8,<10

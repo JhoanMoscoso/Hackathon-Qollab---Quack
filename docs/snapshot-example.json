@@ -1,0 +1,35 @@
+{
+  "num_qubits": 2,
+  "ket": "0.707|00⟩ + 0.707|11⟩",
+  "amplitudes": [[0.707107, 0.0], [0.0, 0.0], [0.0, 0.0], [0.707107, 0.0]],
+  "probs": {"00": 0.5, "10": 0.0, "01": 0.0, "11": 0.5},
+  "marginals": [[0.5, 0.5], [0.5, 0.5]],
+  "entangled": true,
+  "bell_label": "Phi+",
+  "state_key": "dcb205fc712d",
+  "schema_version": 2,
+  "level_id": "level2",
+  "stage_id": "opposites",
+  "stage_index": 0,
+  "stage_count": 2,
+  "revision": 1,
+  "initial_circuit": [["h", 0], ["cx", 0, 1]],
+  "measured": [null, null],
+  "history": [],
+  "gates_left": 1,
+  "terminal_uses_left": {"bob_x_opposites": 1},
+  "objects": {
+    "door_A_north": "super", "door_A_south": "super",
+    "door_B_north": "super", "door_B_south": "super"
+  },
+  "objective": {
+    "status": "pending", "quantum_ready": false,
+    "failure_policy": "death", "required_measurements": [0, 1]
+  },
+  "source": "statevector_fallback",
+  "sampling": {
+    "source": "statevector_fallback", "counts": {}, "shots": 0,
+    "reason": "not_precomputed", "backend": null
+  },
+  "last_measurement": null
+}

@@ -59,8 +59,8 @@ LICENSE               # MIT
 ```
 [Run] → Pyodide carga Qiskit (10–30 s, pantalla #loading)
       → main.js: engine.load_level.callPromising("level1")  → JSON del nivel (string)
-      → engine.precompute.callPromising(backend, shots)       → UN backend.run con todos los
-                                                                 circuitos de medición alcanzables
+      → engine.precompute.callPromising(backend, shots)       → UN backend.run con un circuito
+                                                                  packed; restantes estados fallback
       → loop del juego (JS, 60 fps, solo render/movimiento)
 
 Jugador pisa terminal de compuerta → JS: engine.apply_gate("H", 0) → snapshot
@@ -84,20 +84,20 @@ Todo lo que cruza el puente JS↔Python viaja como **string JSON** (`json.dumps`
 
 ## Estrategia "un job por Run" (IonQ)
 
-1. Al cargar un nivel, `enumerate.py` hace BFS desde el estado inicial con el gate set del nivel y el presupuesto de compuertas (`max_gates`, típico 6). Incluye ramas post-medición (proyección a 0 y a 1 de cada qubit). Deduplica estados por statevector canónico (fase global eliminada, amplitudes redondeadas a 6 decimales).
+1. Antes de enviar, `enumerate.py` hace BFS de **todas las etapas de la campaña** con budgets/usos/mediciones explícitas y dedupe físico para la tabla. Cache y guard de envío viven durante el Run entero, no por nivel. La entrega local actual reúne 21 estados físicos; schema/contrato vigente en 03 y 06 §7.
 2. Para 2 qubits con compuertas Clifford el conjunto cabe en ≤ 60 estados (estados estabilizadores); con presupuesto 6 suele ser 15–40. Para 3 qubits se limita por presupuesto.
-3. Por cada estado se construye un circuito de preparación (la secuencia de compuertas encontrada en el BFS) + medición de todos los qubits. Todos los circuitos van en **un** `backend.run(circuits, shots)`.
+3. `StatePreparation` sin reset + medida y transpilación. **Modo por defecto packed**, alineado con `08-level-design-constraints.md`: diez estados prioritarios en pares independientes de un único circuito de veinte qubits; se decodifican counts por par mediante un manifest explícito de bits clásicos. Si el backend declara menos capacidad se reduce el pack. Otros estados usan Qiskit local; falla de envío/resultado → fallback sin reenviar. `single` queda como modo de un Bell y `batch` como opt-in solo para compatibles. Pack de veinte qubits probado localmente; falta probar esta implementación en Forte.
 4. Resultado: `counts[state_key]`. En juego, medir el qubit k en el estado S = sacar un shot de `counts[S]` y leer el bit k. El estado post-medición se calcula con `Statevector` y se busca su key para la siguiente medición.
 5. Si `backend.run` falla (IonQ caído, lista no soportada), fallback: `Statevector(S).sample_counts(shots)` por estado. Se informa en el debugger ("sampled locally").
 
-Esto hace que el **mismo código** sirva en simulador local, IBM noise model e IonQ. En noise models los counts tienen ruido: el juego lo muestra en el debugger ("hardware noise: 3 % of shots disagree"), lo que es un argumento técnico extra.
+El estado/probabilidades son ideales y los counts backend son estadísticas separadas. Outcomes imposibles se filtran y se informa fuente efectiva/descarte; esto condiciona el ruido y no reproduce una trayectoria física continua. No etiquetar un porcentaje de incompatibilidad como tasa total de error de hardware. Integración del motor entregado en Qollab/JS e IBM noise model todavía pendiente; ver resultados concretos en 06.
 
 ## Rendimiento
 
 - Pyodide + import de Qiskit: 10–30 s la primera vez por sesión. Pantalla de carga obligatoria con texto.
-- Llamada JS→Python: ~1–5 ms. Solo ocurre en eventos (compuerta, medición), nunca por frame.
+- Llamada JS→Python: solo en eventos, nunca por frame; E7 pendiente de medir, objetivo <20 ms.
 - `precompute` en local: < 1 s. En IonQ remote: segundos a decenas de segundos (shot-aware). Usar `shots=200`.
-- Canvas: mapa ≤ 20×12 celdas, ≤ 10 entidades, sin partículas pesadas. 60 fps garantizados.
+- Canvas: mapa ≤20×12, sin partículas pesadas; rendimiento y cantidad de entidades deben medirse en integración, sin garantía 60 fps todavía.
 - No usar `circuit.draw('mpl')` (matplotlib en Pyodide es lento). El circuito se dibuja en JS.
 
 ## Assets
