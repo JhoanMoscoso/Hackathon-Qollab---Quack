@@ -42,8 +42,8 @@ test("Bob's L1 cx terminal has no target_cell: cell is converted, qubit/target/a
 
 test('level3 co-op cx terminal converts cell and target_cell, keeps target and id', () => {
   const cx = stageView(loadLevel(3), 0).terminals.find((t) => t.id === 'shared_cx');
-  assert.deepEqual(cx.cell, [4, 5]);
-  assert.deepEqual(cx.target_cell, [12, 5]);
+  assert.deepEqual(cx.cell, [8, 4]);
+  assert.deepEqual(cx.target_cell, [11, 4]);
   assert.deepEqual([cx.gate, cx.owner, cx.qubit, cx.target, cx.uses], ['cx', 'shared', 0, 1, 1]);
 });
 
@@ -52,12 +52,12 @@ test('validated_exit doors keep type, qubit and unlock_when', () => {
   assert.deepEqual(v.objects.door_A, { type: 'validated_exit', qubit: 0, blocking: true, unlock_when: 'objective_ready' });
 });
 
-test('level3 converts every terminal, including unlimited-use ones kept as null', () => {
+test('level3 keeps HUD terminals without cells and converts shared CX plates', () => {
   const l3 = stageView(loadLevel(3), 0);
-  assert.deepEqual(l3.terminals.map((t) => [t.id, ...t.cell]), [
-    ['alice_h', 3, 1], ['alice_z', 4, 2], ['bob_x', 11, 1], ['shared_cx', 4, 5],
+  assert.deepEqual(l3.terminals.map((t) => [t.id, ...(t.cell ?? [])]), [
+    ['alice_h'], ['alice_z'], ['bob_x'], ['shared_cx', 8, 4],
   ]);
-  assert.deepEqual(l3.terminals.find((t) => t.id === 'shared_cx').target_cell, [15, 3]);
+  assert.deepEqual(l3.terminals.find((t) => t.id === 'shared_cx').target_cell, [11, 4]);
   const l2b = stageView(loadLevel(2), 0);
   assert.equal(l2b.stageId, 'bell_block');
   assert.equal(l2b.terminals[0].uses, 1);

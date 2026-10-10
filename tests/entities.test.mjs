@@ -152,17 +152,17 @@ test('level3 lethal qubit-bound doors: super blocks, closed kills, open passes',
   const w = worldOf(3);
   const bridge = w.doors.find((d) => d.name === 'bridge_A');
   const laser = w.doors.find((d) => d.name === 'laser_B');
-  assert.deepEqual([bridge.x, bridge.y, bridge.qubit, bridge.openOn], [6, 5, 0, 1]);
-  place(w, 'alice', 5, 5);
-  assert.deepEqual(stepPlayer(w, 'alice', 1, 0, objSnap({ bridge_A: 'super', laser_B: '0' })), [{ type: 'blocked', reason: 'superposition' }]);
-  assert.deepEqual(stepPlayer(w, 'alice', 1, 0, objSnap({ bridge_A: '0', laser_B: '0' })), [
-    { type: 'move', player: 'alice', x: 6, y: 5 }, { type: 'death', cause: 'bridge_A' },
+  assert.deepEqual([bridge.x, bridge.y, bridge.qubit, bridge.openOn], [1, 8, 0, 1]);
+  place(w, 'alice', 1, 7);
+  assert.deepEqual(stepPlayer(w, 'alice', 0, 1, objSnap({ bridge_A: 'super', laser_B: '0' })), [{ type: 'blocked', reason: 'superposition' }]);
+  assert.deepEqual(stepPlayer(w, 'alice', 0, 1, objSnap({ bridge_A: '0', laser_B: '0' })), [
+    { type: 'move', player: 'alice', x: 1, y: 8 }, { type: 'death', cause: 'bridge_A' },
   ]);
-  place(w, 'alice', 5, 5);
-  assert.equal(stepPlayer(w, 'alice', 1, 0, objSnap({ bridge_A: '1', laser_B: '0' })).length, 1);
-  place(w, 'bob', 9, 5);
-  assert.deepEqual(stepPlayer(w, 'bob', -1, 0, objSnap({ bridge_A: '1', laser_B: '1' })), [
-    { type: 'move', player: 'bob', x: 8, y: 5 }, { type: 'death', cause: 'laser_B' },
+  place(w, 'alice', 1, 7);
+  assert.equal(stepPlayer(w, 'alice', 0, 1, objSnap({ bridge_A: '1', laser_B: '0' })).length, 1);
+  place(w, 'bob', 18, 7);
+  assert.deepEqual(stepPlayer(w, 'bob', 0, 1, objSnap({ bridge_A: '1', laser_B: '1' })), [
+    { type: 'move', player: 'bob', x: 18, y: 8 }, { type: 'death', cause: 'laser_B' },
   ]);
   assert.deepEqual(hazardCheck(w, objSnap({ bridge_A: '1', laser_B: '1' })), [{ type: 'death', cause: 'laser_B' }]);
   assert.deepEqual(hazardCheck(w, objSnap({ bridge_A: '1', laser_B: 'super' })), [{ type: 'death', cause: 'collapse' }]);
@@ -287,9 +287,9 @@ test('interact on an empty cell does nothing', () => {
 test('level3 cnot needs alice on the control and bob on the target (payload carries terminalId; actor is the terminal owner "shared")', () => {
   const w = worldOf(3);
   const snap = objSnap({}, { terminal_uses_left: { shared_cx: 1 } });
-  place(w, 'alice', 4, 5);
+  place(w, 'alice', ...w.cnot.control);
   assert.deepEqual(interact(w, 'alice', snap), [{ type: 'info', reason: 'cnot_needs_both' }]);
-  place(w, 'bob', 12, 5);
+  place(w, 'bob', ...w.cnot.target);
   // The engine matches `actor` against the terminal owner ('shared'), whoever presses E.
   const expected = [{
     type: 'cnot', gate: 'cx', qubit: 0, target: 1, terminalId: 'shared_cx', actor: 'shared', terminal: w.cnot,
@@ -303,8 +303,8 @@ test('level3 cnot needs alice on the control and bob on the target (payload carr
 
 test('cnot uses: engine terminal_uses_left wins, local counter is the fallback', () => {
   const w = worldOf(3);
-  place(w, 'alice', 4, 5);
-  place(w, 'bob', 12, 5);
+  place(w, 'alice', ...w.cnot.control);
+  place(w, 'bob', ...w.cnot.target);
   assert.deepEqual(interact(w, 'alice', objSnap({}, { terminal_uses_left: { shared_cx: 0 } })), [{ type: 'info', reason: 'terminal_used' }]);
   consumeTerminal(w.cnot);
   assert.deepEqual(interact(w, 'alice', objSnap({})), [{ type: 'info', reason: 'terminal_used' }]);
@@ -313,10 +313,10 @@ test('cnot uses: engine terminal_uses_left wins, local counter is the fallback',
   assert.equal(w.cnot.usesLeft, 1);
 });
 
-test('level3 cnot sits inside the rooms: control (4,5), target (12,5)', () => {
+test('level3 cnot plates flank the central wall: control (8,4), target (11,4)', () => {
   const w = worldOf(3);
-  place(w, 'alice', 4, 5);
-  place(w, 'bob', 12, 5);
+  place(w, 'alice', ...w.cnot.control);
+  place(w, 'bob', ...w.cnot.target);
   const ev = interact(w, 'alice', objSnap({}, { terminal_uses_left: { shared_cx: 1 } }));
   assert.deepEqual(ev.map((e) => [e.type, e.gate, e.terminalId, e.actor]), [['cnot', 'cx', 'shared_cx', 'shared']]);
 });

@@ -115,6 +115,8 @@ export function parseLevel(level) {
     return [cell[0], cell[1]];
   };
   for (const t of terminalCfg) {
+    // HUD-only terminals are engine resources, not physical entities on the map.
+    if (t.placement === 'hud') continue;
     // Co-op CX (L3): control cell + target cell, never a plain gate terminal. A CX without target_cell
     // (L1: Bob's own terminal, activation "owner") is an ordinary owner terminal below.
     if (t.gate === 'cx' && t.target_cell) {

@@ -131,9 +131,9 @@ test('level1 central wall is solid on every row', () => {
 
 test('level3 cnot comes from shared_cx / shared_cx_target inside the rooms', () => {
   const g = gridOf(3);
-  assert.deepEqual(g.cnot, { control: [4, 5], target: [12, 5], terminalId: 'shared_cx', owner: 'shared', uses: 1 });
-  assert.deepEqual(g.terminals.map((t) => t.id), ['alice_h', 'alice_z', 'bob_x']); // the co-op CX is not a plain terminal
-  assert.deepEqual(g.terminals.find((t) => t.id === 'alice_z').cell, [4, 2]);
+  assert.deepEqual(g.cnot, { control: [8, 4], target: [11, 4], terminalId: 'shared_cx', owner: 'shared', uses: 1 });
+  assert.deepEqual(g.terminals, []); // H/Z/X live in HUD; CX remains two spatial plates.
+  assert.equal(2 + g.sensors.length + g.objects.length + Object.values(g.exits).filter(Boolean).length + 2, 10);
 });
 
 test('level without a cx terminal has no cnot', () => {

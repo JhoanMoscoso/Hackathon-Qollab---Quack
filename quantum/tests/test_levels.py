@@ -52,7 +52,10 @@ def test_terminal_ids_gate_owners_and_coordinates_are_validated(level):
         for terminal in stage["terminals"]:
             assert terminal["owner"] in {"alice", "bob", "shared"}
             assert terminal["gate"] in stage["gate_set"][terminal["owner"]]
-            assert terminal["id"] == stage["legend"][stage["map"][terminal["cell"][0]][terminal["cell"][1]]]
+            if terminal.get("placement") == "hud":
+                assert "cell" not in terminal and terminal["gate"] != "cx"
+            else:
+                assert terminal["id"] == stage["legend"][stage["map"][terminal["cell"][0]][terminal["cell"][1]]]
             if terminal["gate"] == "cx" and terminal["owner"] == "shared":
                 assert terminal["target_cell"]
             elif terminal["gate"] == "cx":

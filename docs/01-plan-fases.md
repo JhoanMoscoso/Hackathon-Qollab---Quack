@@ -53,6 +53,8 @@ Objetivo: motor cuántico completo y motor de juego sin niveles reales.
 
 **Exit gate F3:** los 3 niveles se completan; checklist de accesibilidad marcado; sin errores en consola.
 
+**Entrega L3 (2026-10-10):** The Core re-prepara Φ⁺ y mantiene CX→Z de Alice→H de Alice→medir10. H/Z de Alice y X de Bob se controlan desde HUD; CX exige ambas placas físicas. Diez entidades de mapa, presupuesto5 y mismos recursos; sin GHZ ni protocolos RUN/SEND nuevos. F3 requiere recorrido real de tres niveles y accesibilidad en Qollab, no solo validación local.
+
 ## Fase 4 — Congelación y entrega (H24 → H28)
 
 1. Code freeze. Solo bugs bloqueantes.

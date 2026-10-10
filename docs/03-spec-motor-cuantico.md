@@ -26,6 +26,8 @@ Dueño: Juanjo. Consumidor: Jhoan (`main.js`). Todo lo que se devuelve a JS es *
 
 ## API pública (`quantum/engine.py`)
 
+**L3 The Core:** mismas gates/objetivo del MD06. Terminales locales pueden declarar `placement:"hud"` sin `cell`; mantienen id/owner/qubit/uses y se consumen con apply_gate. Solo CX compartida lleva celdas físicas y exige ambos jugadores. Diez entidades sin quitar H/Z/X ni sumar estados al pack. Probe `dev/qollab-l3/main.py`, handoff06§11.
+
 Todas las funciones son `async def` donde tocan `backend`, y síncronas en el resto (JS las llama igual con `callPromising`).
 
 ```python
@@ -132,6 +134,8 @@ def snapshot() -> str
 L1 declara `validation: {target_bell:"Phi+",required_sequence:[["h",0],["cx",0,1]]}` y dos `validated_exit` con `blocking:true,unlock_when:"objective_ready"`, sin `open_on`. Las puertas físicas abren para 00 **y** 11 tras preparación validada y ambas medidas; no usar la regla legacy de puerta verde=0 para ese tipo.
 
 L2 declara `feed_forward: {sender_qubit:1,receiver_qubit:0,preparation_gate:["x",1],corrections:{"0":"x","1":"i"},classical_channel:"explicit_send_receive"}`. Dos `protocol_exit` se abren con objetivo completo, no con el bit Bob: tanto 00 como 01 finales son válidos. Identidad y mensaje son eventos clásicos del historial, no gates físicas. Reset borra mensaje/decisión y re-prepara Φ⁺, sin reenviar al backend.
+
+`placement:"hud"` admite solo gates locales Alice/Bob, sin cell/target_cell, nunca CX. Parser JS omite su entidad física; Python valida gate/owner/qubit/usos/presupuesto. En L3 botones/teclas H/Z de Alice y X de Bob usan cola/epochguard; deshabilitados al medir, agotar recursos o terminar. No inferir geometría de una celda faltante ni simular gates en el renderer.
 
 ```json
 {
