@@ -268,10 +268,11 @@ function drawDoor(ctx, door, snap, sheet, t, reduceMotion) {
   // Bound to the stage objective / the validated circuit, not to the qubit value: shown as a padlock while locked.
   const engine = door.engineDriven(snap);
   const joint = door.qubit === undefined || engine;
-  if (sheet && sheet.tiles[doorTile(door, snap, t, reduceMotion)]) {
+  const tileName = sheet && doorTile(door, snap, t, reduceMotion);
+  if (sheet && sheet.tiles[tileName]) {
     ctx.save();
     if (!engine && door.isOpen(snap)) ctx.globalAlpha = OPEN_DOOR_ALPHA; // passable: ghost over the floor
-    drawTile(ctx, sheet, doorTile(door, snap, t, reduceMotion), x, y);
+    drawTile(ctx, sheet, tileName, x, y);
     ctx.restore();
     // Engine doors say it with a padlock / open doorway; qubit doors keep a text badge next to the glyph art.
     if (!engine) drawBadge(ctx, x, y, 'tr', state === 'super' ? '?' : state, state === 'super' ? COLORS.superpos : state === '0' ? COLORS.zero : COLORS.one);

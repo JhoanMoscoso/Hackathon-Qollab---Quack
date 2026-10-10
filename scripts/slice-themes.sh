@@ -46,17 +46,17 @@ cell() {
     if [[ "$mode" == C ]]; then oy=$(( (32 - nh) / 2 )); else oy=$(( 32 - nh )); fi
   fi
   magick "$keyed" -crop "${sw}x${sh}+${sx}+${sy}" +repage -filter Box -resize "${nw}x${nh}!" "$TMP/cell.png"
-  magick "$out" "$TMP/cell.png" -geometry "+$((col * 32 + ox))+$((row * 32 + oy))" -compose Over -composite "$out"
+  magick "$out" "$TMP/cell.png" -geometry "+$((col * 32 + ox))+$((row * 32 + oy))" -compose Over -composite -strip "$out"
 }
 
 # region <keyed.png> <out.png> <x> <y> <w> <h>   (output px; copies the box-scaled region to the same place)
 region() {
   local keyed="$1" out="$2" x="$3" y="$4" w="$5" h="$6"
   magick "$keyed" -crop "$((w * 8))x$((h * 8))+$((x * 8))+$((y * 8))" +repage -filter Box -resize "${w}x${h}!" "$TMP/region.png"
-  magick "$out" "$TMP/region.png" -geometry "+${x}+${y}" -compose Over -composite "$out"
+  magick "$out" "$TMP/region.png" -geometry "+${x}+${y}" -compose Over -composite -strip "$out"
 }
 
-blank() { magick -size 256x256 xc:none PNG32:"$1"; }
+blank() { magick -size 256x256 xc:none -strip PNG32:"$1"; } # -strip: no timestamps, so reruns are byte-identical
 
 # ---------------------------------------------------------------- lab tiles
 lab_tiles() {
