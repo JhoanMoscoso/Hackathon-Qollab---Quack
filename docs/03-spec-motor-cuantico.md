@@ -4,6 +4,8 @@ Dueño: Juanjo. Consumidor: Jhoan (`main.js`). Todo lo que se devuelve a JS es *
 
 **Contrato implementado v2:** niveles con `stages[]`, API/ejemplo real en `docs/snapshot-example.json` e instrucciones de entrega en `docs/06-handoff-juanjo.md` §7. Los mapas siguen pendientes de walkthrough JS. Extensiones v2 son explícitas, no suponer que el ejemplo antiguo de un nivel sin etapas es un asset listo para cargar.
 
+**Revisión de L1 para PR (2026-10-10):** `Calibration Chamber` ahora parte de |00⟩ y exige H de Alice, CX de Bob y `run_circuit()` antes de medir. Snapshot inicial en `docs/snapshot-level1-example.json`. Las pruebas Qollab históricas corresponden al diseño anterior; esta revisión está validada localmente y todavía debe probarse en Qollab y conectarse a la UI antes de declararse jugable.
+
 ## Conceptos que el equipo debe entender (en orden)
 
 1. **Qubit y base computacional.** Un qubit es un vector unitario `|ψ⟩ = α|0⟩ + β|1⟩`, `|α|² + |β|² = 1`. Medir en la base computacional da 0 con probabilidad `|α|²` y 1 con `|β|²`, y deja el qubit en el valor obtenido.
@@ -30,12 +32,12 @@ async def load_level(level_id: str) -> str
 # Devuelve el nivel entero con schema_version=2, num_qubits y stages[].
 
 def new_session(level_id: str) -> str
-# Crea la sesión: estado inicial (del JSON: "initial_circuit": [["h",0],["cx",0,1]]), historial vacío.
+# Crea sesión desde initial_circuit del JSON; L1 usa [] → |00⟩, L2/L3 preparan Bell.
 # Devuelve snapshot (ver abajo).
 
 async def precompute(backend=None, shots: int = 200, strategy: str = "packed") -> str
 # BFS de toda la campaña + a lo sumo UN backend.run en la vida de la ejecución.
-# packed: diez pares prioritarios en UN circuito de veinte qubits (08 constraints).
+# packed: diez pares prioritarios en UN circuito de veinte qubits (07 constraints).
 # single: un Bell remoto; batch: opt-in para backends compatibles. Restantes fallback.
 # Devuelve states, circuits realmente enviados, source backend|mixed|statevector_fallback,
 # backend, shots, strategy, sources por estado, submission_attempted, reason,
@@ -46,10 +48,17 @@ def apply_gate(gate: str, qubit: int, target: int = -1,
 # gate ∈ {"x","h","z","cx"}; para "cx" qubit=control, target=target.
 # Valida contra el gate set del nivel y el presupuesto. Devuelve snapshot (o {"error": "..."}).
 # Sin id explícito se resuelve un terminal compatible y se consumen sus usos igualmente.
+# L1 exige actor="alice"/"bob" explícito; llamadas legacy de L2/L3 conservan actor opcional.
+
+def run_circuit() -> str
+# En L1 valida orden H(0),CX(0,1) y estado Phi+ módulo fase global; no consume gates/jobs.
+# Devuelve snapshot con prueba validada persistente; aún no abre puertas ni mide.
+# Idempotente después de validación, incluso tras colapso; reset elimina esa prueba.
 
 def measure(qubit: int) -> str
 # Saca un shot de counts[state_key] (o fallback), lee el bit, proyecta el estado.
 # Devuelve {"qubit": k, "outcome": 0|1, "snapshot": {...}}.
+# En L1, antes de RUN válido devuelve CIRCUIT_NOT_VALIDATED sin muestrear/mutar.
 
 def reset_level() -> str
 # Vuelve al estado inicial, limpia historial. Devuelve snapshot.
@@ -95,10 +104,14 @@ def snapshot() -> str
 - Campos v2 adicionales: `schema_version`, `level_id`, `stage_id`, `stage_index` base0, `stage_count`, `revision`, `terminal_uses_left`, `objective`, `source`, `sampling`, `last_measurement`. Ver snapshot completo entregado.
 - `history` registra acciones posteriores a preparación, incluida `["measure",q,outcome]`; no se duplica la preparación oculta. `measured` solo registra observaciones explícitas: un qubit definido por correlación sigue disponible para gates.
 - `objective.status` = pending/ready/failed; `quantum_ready` exige win y `required_measurements` (ambos qubits en MVP). Victoria espacial se decide en JS. Errores conservan `error` y agregan `code` estable.
+- L1 añade `circuit_validation` (required/validated/status/target_bell/required_sequence), `measurement_enabled`, `exits_unlocked` y `door_states`. `objects[door_A]="0"` sigue siendo el valor cuántico: **no indica que la puerta esté abierta**. Arte/colisión del nuevo tipo `validated_exit` deben usar `door_states`.
+- En L1 `quantum_ready` exige prueba previa, ambas medidas explícitas y paridad igual. `circuit_validation.status="complete"` significa protocolo cuántico completo, no que los jugadores ya llegaron a salidas. Las gates quedan bloqueadas tras RUN hasta reset. `history` registra `["run_circuit"]` como evento de validación, no gate física del diagrama.
 
 ## Formato de nivel (`levels/levelN.json`)
 
-**Ejemplo v1 histórico para contexto, no válido en el loader v2.** Los assets reales son `levels/level1.json`–`level3.json`: cabecera con `schema_version,id,title,num_qubits,stages`; cada etapa incluye los campos operativos del ejemplo siguiente más `id`, `required_measurements`, `failure_policy`. Cada terminal ahora tiene `id`, `qubit` y `target`/`target_cell` para CX. `uses:null` significa reutilizable, limitado siempre por `max_gates`. L1 usa indicadores no bloqueantes y cerradura conjunta; no copiar las puertas exclusivas del ejemplo a ese nivel.
+**Ejemplo v1 histórico para contexto, no válido en el loader v2.** Los assets reales son `levels/level1.json`–`level3.json`: cabecera con `schema_version,id,title,num_qubits,stages`; cada etapa incluye `id`, `required_measurements`, `failure_policy`. `uses:null` significa reutilizable y limitado por max_gates. Terminales llevan id/qubit/target. CX compartida de L3 requiere target_cell; la CX de Bob en L1 usa activation=owner, control q0/target q1 y una celda en su sala, sin requerir ambas placas. No inferir operandos de CX a partir del owner.
+
+L1 declara `validation: {target_bell:"Phi+",required_sequence:[["h",0],["cx",0,1]]}` y dos `validated_exit` con `blocking:true,unlock_when:"objective_ready"`, sin `open_on`. Las puertas físicas abren para 00 **y** 11 tras preparación validada y ambas medidas; no usar la regla legacy de puerta verde=0 para ese tipo.
 
 ```json
 {
@@ -148,5 +161,7 @@ Circuito de medición = circuito **nuevo** de `StatePreparation(vector)` + `meas
 3. `Φ⁺` → `CX` → `H(0)` → `probs["00"] == 1.0`.
 4. `H Z H` sobre `|0⟩` → `|1⟩`.
 5. `canonical_key` de `Φ⁺` y de `−Φ⁺` coinciden; de `Φ⁺` y `Φ⁻` difieren.
-6. `reachable` con fixture genérico Clifford y `max_gates=6` devuelve ≤ 60 estados y contiene las keys de `Φ⁺`, `Ψ⁺`, `|00⟩`, `|10⟩`. No usar el L1 actual sin gates para exigir Ψ⁺.
+6. `reachable` con fixture genérico Clifford y `max_gates=6` devuelve ≤ 60 estados y contiene las keys de `Φ⁺`, `Ψ⁺`, `|00⟩`, `|10⟩`. No exigir Ψ⁺ al L1 restringido a H(0),CX(0,1).
 7. Convención: tras `X(q0)` en `|00⟩`, `probs["10"] == 1.0` (no `"01"`).
+
+8. L1: circuito vacío, incompleto, orden incorrecto, Phi+ sin RUN y una sola medida no abren puertas. RUN compara estado completo, no counts/paridad; aceptar fase global, rechazar estado producto aunque haya historial correcto. Ambas ramas 00/11 abren ambas puertas después de medir ambos; reset las vuelve a cerrar. Gates sin actor se rechazan en L1, RUN repetido es idempotente y nunca envía otro job.

@@ -14,7 +14,7 @@ def payload(value):
 @pytest.fixture
 def engine():
     result = Engine(seed=17)
-    assert "error" not in payload(result.new_session("level1"))
+    assert "error" not in payload(result.new_session("level2"))
     return result
 
 
@@ -43,8 +43,8 @@ def test_invalid_requests_are_atomic(engine, args, code):
 
 
 def test_terminal_owner_budget_and_exhaustion(engine):
-    # The L1 independent stage intentionally has no terminals/budget.
-    assert payload(engine.apply_gate("x", 0, actor="alice"))["code"] == "GATE_BUDGET_EXHAUSTED"
+    # L2 has no Alice X terminal; a valid qubit alone does not authorize a gate.
+    assert payload(engine.apply_gate("x", 0, actor="alice"))["code"] == "GATE_NOT_ALLOWED"
     # L2's Bob terminal is reusable but actor ownership remains enforced.
     l2 = Engine(seed=2)
     l2.new_session("level2")
@@ -128,7 +128,7 @@ def test_global_wrappers_and_concurrent_session_independence():
     a, b = Engine(seed=1), Engine(seed=1)
     a.new_session("level1")
     b.new_session("level1")
-    a.apply_gate("h", 0)
+    assert "error" not in payload(a.apply_gate("h", 0, actor="alice"))
     assert payload(b.snapshot())["history"] == []
     assert LEVEL_IDS == ("level1", "level2", "level3")
 

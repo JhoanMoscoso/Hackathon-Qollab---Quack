@@ -81,8 +81,9 @@ def reachable(initial: QuantumCircuit, gate_set, max_gates: int, num_qubits: int
         for gate in gates:
             if gate not in {"h", "x", "z", "cx"}:
                 raise ValueError("Unsupported fixture gate")
-            for qubit in qubits:
-                targets = ([1] if owner == "shared" else range(num_qubits)) if gate == "cx" else [-1]
+            controls = [0] if gate == "cx" and owner in {"bob", "shared"} else qubits
+            for qubit in controls:
+                targets = ([1] if owner in {"bob", "shared"} else range(num_qubits)) if gate == "cx" else [-1]
                 for target in targets:
                     if target == qubit:
                         continue

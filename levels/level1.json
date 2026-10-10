@@ -1,88 +1,65 @@
 {
   "schema_version": 2,
   "id": "level1",
-  "title": "Calibration",
+  "title": "Calibration Chamber",
   "num_qubits": 2,
   "coordinate_convention": "[row, column], zero-based; map rows are listed top to bottom",
-  "design_notes": "The individual quantum objects door_A and door_B are non-blocking indicators, not exclusive doors. Both routes remain open for 00 and 11. The objective-controlled joint lock permits the exits only when the measured parity is equal. The independent stage succeeds with probability 1/2 per attempt; retry_stage does not guarantee eventual success in any finite number of attempts. The shared debugger communicates classical measurement records; neither player can signal through entanglement.",
-  "integration_status": "requires_js_walkthrough",
+  "design_notes": "Construction and physical unlocking are separate. Start in |00> with no prepared gates. Alice places H(q0), then Bob places CX(q0,q1); Bob owns the placement terminal, not the control qubit. RUN CIRCUIT checks the ordered preparation and the target Phi+ modulo global phase. Measurements are blocked until that validation, and both physical doors remain closed until both explicit results match. Both 00 and 11 open both doors; local open_on bits are deliberately absent. RUN CIRCUIT validates locally against the precomputed reference and never submits another backend job. Classical debugger communication is required; entanglement does not send a message.",
+  "integration_status": "requires_js_protocol_and_walkthrough",
+  "integration_notes": "10 physical entities: two players, two sensors, two gate terminals, two doors and two exits. Add a RUN CIRCUIT UI button bound to engine.run_circuit(); disable sensors until measurement_enabled and drive collision/door art from door_states. The Bob-owned CX terminal activates from Bob's room and is not the shared two-player terminal used in L3. Reachable exits are behind their respective physical doors; JS still confirms both players at exits.",
   "stages": [
     {
-      "id": "independent",
-      "title": "Independent Lock",
-      "initial_circuit": [["h", 0], ["h", 1]],
-      "gate_set": {"alice": [], "bob": [], "shared": []},
-      "max_gates": 0,
+      "id": "bell_preparation",
+      "title": "Build, Run, Measure and Escape",
+      "initial_circuit": [],
+      "gate_set": {"alice": ["h"], "bob": ["cx"], "shared": []},
+      "max_gates": 2,
+      "validation": {
+        "target_bell": "Phi+",
+        "required_sequence": [["h", 0], ["cx", 0, 1]]
+      },
       "win": {"parity": "equal"},
       "required_measurements": [0, 1],
       "failure_policy": "retry_stage",
       "map": [
         "####################",
-        "#A.D..E#####e..d.B##",
-        "#.......###.......##",
-        "#.S.....###.....s.##",
-        "####################",
-        "####################",
-        "####################",
-        "####################",
-        "####################",
-        "####################",
-        "####################",
+        "#........##........#",
+        "#.A......##......B.#",
+        "#........##........#",
+        "#..S.....##..s.....#",
+        "#.H......##.....C..#",
+        "#........##........#",
+        "#........##........#",
+        "#D#......##......#d#",
+        "#E#......##......#e#",
+        "#.#......##......#.#",
         "####################"
       ],
-      "legend": {"A": "alice_start", "B": "bob_start", "S": "sensor_q0", "s": "sensor_q1", "E": "exit_A", "e": "exit_B", "D": "door_A", "d": "door_B", "#": "wall", ".": "floor"},
-      "objects": {
-        "door_A": {"type": "indicator", "qubit": 0, "open_on": 0, "blocking": false},
-        "door_B": {"type": "indicator", "qubit": 1, "open_on": 0, "blocking": false},
-        "joint_lock": {"type": "objective_controlled_joint_lock", "win_condition": "parity_equal", "controls_exits": true}
+      "legend": {
+        "#": "wall", ".": "floor",
+        "A": "alice_start", "B": "bob_start",
+        "S": "sensor_q0", "s": "sensor_q1",
+        "H": "alice_h", "C": "bob_cx",
+        "D": "door_A", "d": "door_B",
+        "E": "exit_A", "e": "exit_B"
       },
-      "terminals": [],
-      "narration": {
-        "enter": "Independent qubits; match the bits.",
-        "first_gate": "No gates available in this stage.",
-        "first_measure": "Debugger shares classical results.",
-        "death": "Parity mismatch. Retry this stage.",
-        "glitch": "Fallback: sampled locally with Qiskit.",
-        "win": "Matching bits unlock both exits."
-      }
-    },
-    {
-      "id": "entangled",
-      "title": "Entangled Lock",
-      "initial_circuit": [["h", 0], ["cx", 0, 1]],
-      "gate_set": {"alice": [], "bob": [], "shared": []},
-      "max_gates": 0,
-      "win": {"parity": "equal"},
-      "required_measurements": [0, 1],
-      "failure_policy": "retry_stage",
-      "map": [
-        "####################",
-        "#A.D..E#####e..d.B##",
-        "#.......###.......##",
-        "#.S.....###.....s.##",
-        "####################",
-        "####################",
-        "####################",
-        "####################",
-        "####################",
-        "####################",
-        "####################",
-        "####################"
+      "objects": {
+        "door_A": {"type": "validated_exit", "qubit": 0, "blocking": true, "unlock_when": "objective_ready"},
+        "door_B": {"type": "validated_exit", "qubit": 1, "blocking": true, "unlock_when": "objective_ready"}
+      },
+      "terminals": [
+        {"id": "alice_h", "cell": [5, 2], "gate": "h", "owner": "alice", "qubit": 0, "uses": 1},
+        {"id": "bob_cx", "cell": [5, 16], "gate": "cx", "owner": "bob", "qubit": 0, "target": 1, "activation": "owner", "uses": 1}
       ],
-      "legend": {"A": "alice_start", "B": "bob_start", "S": "sensor_q0", "s": "sensor_q1", "E": "exit_A", "e": "exit_B", "D": "door_A", "d": "door_B", "#": "wall", ".": "floor"},
-      "objects": {
-        "door_A": {"type": "indicator", "qubit": 0, "open_on": 0, "blocking": false},
-        "door_B": {"type": "indicator", "qubit": 1, "open_on": 0, "blocking": false},
-        "joint_lock": {"type": "objective_controlled_joint_lock", "win_condition": "parity_equal", "controls_exits": true}
-      },
-      "terminals": [],
       "narration": {
-        "enter": "Bell pair: results match, 00 or 11.",
-        "first_gate": "No gates available in this stage.",
-        "first_measure": "Debugger shares classical results.",
-        "death": "Parity mismatch. Retry this stage.",
-        "glitch": "Fallback: sampled locally with Qiskit.",
-        "win": "Matching bits unlock both exits."
+        "enter": "Build H on Alice, then Bob's CX.\nDoors stay locked until you run.",
+        "first_gate": "Place H first, then CX(0,1).\nRUN CIRCUIT checks the Bell state.",
+        "validation_failed": "Circuit not ready: use H, then CX.\nReset the stage and try again.",
+        "circuit_validated": "Bell state verified. Doors stay shut.\nMeasure both qubits to unlock them.",
+        "first_measure": "You measured one qubit.\nBoth results must match to unlock.",
+        "death": "No exit yet: complete the protocol.\nReset and prepare the Bell pair.",
+        "glitch": "Backend data disagrees with ideal.\nSee the sampling diagnostics.",
+        "win": "Bell verified; matching bits measured.\nBoth doors are open. Reach the exits."
       }
     }
   ]

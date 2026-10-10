@@ -84,9 +84,11 @@ Todo lo que cruza el puente JS↔Python viaja como **string JSON** (`json.dumps`
 
 ## Estrategia "un job por Run" (IonQ)
 
-1. Antes de enviar, `enumerate.py` hace BFS de **todas las etapas de la campaña** con budgets/usos/mediciones explícitas y dedupe físico para la tabla. Cache y guard de envío viven durante el Run entero, no por nivel. La entrega local actual reúne 21 estados físicos; schema/contrato vigente en 03 y 06 §7.
+1. Antes de enviar, `enumerate.py` hace BFS de **todas las etapas de la campaña** con budgets/usos/mediciones y prueba RUN de L1; dedupe físico para la tabla. Cache/guard duran el Run, no nivel. Revisión local nueva: 20 estados físicos, cuatro etapas; las pruebas Qollab históricas usaron 21. Contrato en 03 y 06 §9.
 2. Para 2 qubits con compuertas Clifford el conjunto cabe en ≤ 60 estados (estados estabilizadores); con presupuesto 6 suele ser 15–40. Para 3 qubits se limita por presupuesto.
 3. `StatePreparation` sin reset + medida y transpilación. **Modo por defecto packed**, alineado con `07-level-design-constraints.md`: diez estados prioritarios en pares independientes de un único circuito de veinte qubits; se decodifican counts por par mediante un manifest explícito de bits clásicos. Si el backend declara menos capacidad se reduce el pack. Otros estados usan Qiskit local; falla de envío/resultado → fallback sin reenviar. `single` queda como modo de un Bell y `batch` como opt-in solo para compatibles. **Motor, pack y puente JS de diagnóstico probados en Qollab built-in y Forte**; el recorrido/adaptación del juego sigue pendiente.
+
+   **L1 revisado localmente:** inicio |00⟩, H Alice y CX Bob, después `run_circuit` verifica preparación. RUN no equivale a backend.run ni hace otro job. Sensores bloqueados antes de validar; puertas físicas por prueba+ambas medidas iguales, no por el bit local. Prioridades nuevas incluyen Ψ⁻ en vez de |++⟩; diez pares siguen cabiendo, pero ese manifest nuevo aún no fue probado en Qollab. Ver 06 §9 y snapshot L1.
 4. Resultado: `counts[state_key]`. En juego, medir el qubit k en el estado S = sacar un shot de `counts[S]` y leer el bit k. El estado post-medición se calcula con `Statevector` y se busca su key para la siguiente medición.
 5. Si `backend.run` falla (IonQ caído, lista no soportada), fallback: `Statevector(S).sample_counts(shots)` por estado. Se informa en el debugger ("sampled locally").
 
