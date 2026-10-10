@@ -1,0 +1,26 @@
+# lab_elements.png - 16x16 logical tiles, zero-based col,row; w,h in tiles; frames count
+# Format: name: col,row,w,h,frames
+plant_small: 0,0,1,1,1 # muted plant, no state-green glow
+plant_purple: 1,0,1,1,1 # muted purple plant
+plant_medium: 2,0,1,1,1 # muted green plant
+plant_flower: 3,0,1,1,1 # small flower plant
+tank_creature_a_f1: 4,0,1,2,3 # tank animation frame 1
+tank_creature_a_f2: 5,0,1,2,3 # tank animation frame 2
+tank_creature_a_f3: 6,0,1,2,3 # tank animation frame 3
+tank_empty: 7,0,1,2,1 # empty containment tank
+tank_broken: 8,0,1,2,1 # broken tank
+console_single: 9,0,1,1,1 # single monitor console
+console_double: 10,0,2,1,1 # double monitor workstation
+server_rack: 12,0,1,2,1 # server rack
+lab_bench: 13,0,2,2,1 # lab bench with flasks
+microscope: 15,0,1,1,1 # microscope
+lab_bed: 0,1,2,1,1 # lab bed
+crate_small: 2,1,1,1,1 # small storage crate
+crate_orange: 3,1,1,1,1 # orange-trimmed crate
+floor_mat: 9,1,2,1,1 # rectangular floor mat
+floor_grate: 11,1,1,1,1 # floor grate
+wall_light: 15,1,1,1,1 # small wall light
+test_tube_rack: 0,2,1,1,1 # test tube rack
+cabinet: 1,2,1,1,1 # small cabinet
+wall_screen: 2,2,1,1,1 # wall screen
+hazard_sign: 3,2,1,1,1 # caution sign
