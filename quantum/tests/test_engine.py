@@ -43,8 +43,9 @@ def test_invalid_requests_are_atomic(engine, args, code):
 
 
 def test_terminal_owner_budget_and_exhaustion(engine):
-    # The L1 independent stage intentionally has no terminals/budget.
-    assert payload(engine.apply_gate("x", 0, actor="alice"))["code"] == "GATE_BUDGET_EXHAUSTED"
+    # L1 calibration offers only Alice's H and the shared CX: no X terminal exists.
+    assert payload(engine.apply_gate("x", 0, actor="alice"))["code"] == "GATE_NOT_ALLOWED"
+    assert payload(engine.apply_gate("h", 0, actor="bob"))["code"] == "INVALID_ACTOR"
     # L2's Bob terminal is reusable but actor ownership remains enforced.
     l2 = Engine(seed=2)
     l2.new_session("level2")
@@ -112,7 +113,11 @@ def test_reset_stage_level_and_advance_guards():
 def test_snapshots_are_json_safe_and_separate_initial_from_history(engine):
     snap = payload(engine.snapshot())
     assert snap["history"] == []
-    assert snap["initial_circuit"]
+    assert snap["initial_circuit"] == []        # L1 starts blank at |00>
+    # Level 2 keeps a hidden preparation circuit that is not duplicated into history.
+    l2 = Engine(seed=1)
+    prepared = payload(l2.new_session("level2"))
+    assert prepared["initial_circuit"] and prepared["history"] == []
     assert snap["amplitudes"]
     assert all(isinstance(x, list) and len(x) == 2 for x in snap["amplitudes"])
     assert snap["objects"]

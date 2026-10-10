@@ -6,6 +6,8 @@ import base64
 import json
 from copy import deepcopy
 
+from quantum.state import BELL_STATES
+
 LEVEL_IDS = ("level1", "level2", "level3")
 
 
@@ -67,6 +69,12 @@ def validate_level(level: dict) -> dict:
             raise ValueError("Win qubits must be explicitly measured")
         if stage.get("failure_policy") not in {"retry_stage", "death"}:
             raise ValueError("Invalid failure policy")
+        if "requires_run" in stage:
+            run_rule = stage["requires_run"]
+            if (not isinstance(run_rule, dict) or set(run_rule) != {"target"}
+                    or not isinstance(run_rule["target"], str)
+                    or run_rule["target"] not in BELL_STATES):
+                raise ValueError("requires_run needs a Bell target label")
         grid = stage.get("map")
         if (not isinstance(grid, list) or not grid or len(grid) > 12
                 or not all(isinstance(row, str) for row in grid)

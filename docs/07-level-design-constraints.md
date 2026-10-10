@@ -34,10 +34,12 @@ Current designs:
 
 | Level | Packed states | New to the budget |
 |---|---|---|
-| L1 Calibration | `\|++⟩` (stage 1), Φ⁺ (stage 2) | 2 |
+| L1 Calibration Chamber (one stage, starts at `\|00⟩`, RUN CIRCUIT) | Φ⁺ only (measured after the run validates it) | 1 |
 | L2 Bell Block | Φ⁺, Ψ⁺ | 1 (Ψ⁺) |
 | L3 The Core | Φ⁺, `\|+0⟩`, `\|−0⟩`, `\|10⟩` (+ Φ⁻ / Ψ⁻ if Z is used on the entangled pair) | 3–5 |
-| **Total** | | **6–8 → 12–16 qubits. Fits (16 was tested).** |
+| **Total** | | **5–7. The default pack holds 9 pairs (Φ⁺, `\|00⟩`, `\|01⟩`, `\|10⟩`, `\|11⟩`, Ψ⁺, Φ⁻, `\|+0⟩`, `\|−0⟩`) = 18 qubits, within the 10-pair (20-qubit) pack and the 14-state hard limit.** |
+
+L1's unvalidated states (`\|00⟩` and `\|+0⟩` while building) are never measured, because the engine refuses `measure` until RUN CIRCUIT validates Φ⁺, so they need no packed slot. The old `\|++⟩` stage is gone.
 
 A new level or stage must add **at most 3–4** new measurement states. If an idea needs more, simplify it or split it into stages.
 

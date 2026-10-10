@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
 
-from quantum.state import canonical_key, evolve_gate, initial_state, marginals, project
+from quantum.state import bell_label, canonical_key, evolve_gate, initial_state, marginals, project
 
 
 class RuleError(ValueError):
@@ -22,6 +22,7 @@ class Position:
     measured: tuple[int | None, ...]
     gates_used: int
     uses_left: tuple[int | None, ...]
+    validated: bool = False  # RUN CIRCUIT passed (only meaningful with stage["requires_run"])
 
 
 def start(stage: dict, num_qubits: int = 2) -> Position:
@@ -35,6 +36,8 @@ def start(stage: dict, num_qubits: int = 2) -> Position:
 def objective(stage: dict, position: Position) -> str:
     measured = position.measured
     win = stage["win"]
+    if "requires_run" in stage and not position.validated:
+        return "pending"   # nothing counts before RUN CIRCUIT validated the prepared state
     if "parity" in win:
         if measured[0] is not None and measured[1] is not None:
             equal = measured[0] == measured[1]
@@ -50,8 +53,27 @@ def objective(stage: dict, position: Position) -> str:
     return "pending"
 
 
+def require_validated(stage: dict, position: Position) -> None:
+    """Stages with requires_run only allow measurement after RUN CIRCUIT validated the state."""
+    if "requires_run" in stage and not position.validated:
+        raise RuleError("NOT_VALIDATED", "Run the circuit before measuring")
+
+
+def run(stage: dict, position: Position) -> Position:
+    """RUN CIRCUIT: free, idempotent; succeeds only when the state is the target Bell state."""
+    if "requires_run" not in stage:
+        raise RuleError("RUN_NOT_REQUIRED", "This stage has no circuit to run")
+    if position.validated:
+        return position
+    target = stage["requires_run"]["target"]
+    if bell_label(position.sv) != target:
+        raise RuleError("CIRCUIT_MISMATCH", f"Circuit does not prepare {target} yet. Press R to reset.")
+    return replace(position, validated=True)
+
+
 def logical_key(position: Position):
-    return (canonical_key(position.sv), position.measured, position.gates_used, position.uses_left)
+    return (canonical_key(position.sv), position.measured, position.gates_used,
+            position.uses_left, position.validated)
 
 
 def check_qubit(qubit, n):
@@ -71,6 +93,8 @@ def apply(stage: dict, position: Position, gate, qubit, target=-1,
             raise RuleError("INVALID_QUBIT", "Control and target must differ")
     elif type(target) is not int or target != -1:
         raise RuleError("INVALID_QUBIT", "Single-qubit gate has no target")
+    if position.validated:
+        raise RuleError("CIRCUIT_LOCKED", "The circuit is validated; reset to rebuild it")
     if objective(stage, position) != "pending":
         raise RuleError("STAGE_FINISHED", "Reset or advance the finished stage")
     touched = (qubit, target) if gate == "cx" else (qubit,)
@@ -97,7 +121,7 @@ def apply(stage: dict, position: Position, gate, qubit, target=-1,
     if uses[index] is not None:
         uses[index] -= 1
     sv = evolve_gate(position.sv, gate, qubit, target)
-    return Position(sv, position.measured, position.gates_used + 1, tuple(uses)), terminal["id"]
+    return replace(position, sv=sv, gates_used=position.gates_used + 1, uses_left=tuple(uses)), terminal["id"]
 
 
 def collapse(stage: dict, position: Position, qubit: int, outcome: int) -> Position:
@@ -108,6 +132,7 @@ def collapse(stage: dict, position: Position, qubit: int, outcome: int) -> Posit
         if outcome != position.measured[qubit]:
             raise RuleError("INVALID_OUTCOME", "Repeated measurement cannot change its result")
         return position
+    require_validated(stage, position)
     if objective(stage, position) != "pending":
         raise RuleError("STAGE_FINISHED", "Reset or advance the finished stage")
     sv = project(position.sv, qubit, outcome)
@@ -123,6 +148,12 @@ def actions(stage: dict, position: Position, allow_cx=True):
     if objective(stage, position) != "pending":
         return []
     result = []
+    if "requires_run" in stage and not position.validated:
+        try:
+            run(stage, position)
+            result.append(("run",))   # free step; offered only when it would succeed
+        except RuleError:
+            pass
     for terminal in stage["terminals"]:
         if terminal["gate"] == "cx" and not allow_cx:
             continue
@@ -132,11 +163,14 @@ def actions(stage: dict, position: Position, allow_cx=True):
         except RuleError:
             continue
         result.append(("gate", terminal["id"]))
-    result.extend(("measure", q) for q, bit in enumerate(position.measured) if bit is None)
+    if "requires_run" not in stage or position.validated:
+        result.extend(("measure", q) for q, bit in enumerate(position.measured) if bit is None)
     return result
 
 
 def branches(stage: dict, position: Position, action: tuple):
+    if action[0] == "run":
+        return [(1.0, None, run(stage, position))]
     if action[0] == "gate":
         terminal = next(t for t in stage["terminals"] if t["id"] == action[1])
         next_position, _ = apply(stage, position, terminal["gate"], terminal["qubit"],

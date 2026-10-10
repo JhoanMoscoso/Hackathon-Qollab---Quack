@@ -69,7 +69,10 @@ def _report(stage, initial, num_qubits, allow_cx):
 
     root = emit(initial)
     # Blind policy is the fixed strategy of measuring q0 then q1, with no feed-forward.
+    # A requires_run stage refuses every measurement until the (free) run step validated it.
     def blind(pos, q):
+        if "requires_run" in stage and not pos.validated:
+            return 0.0  # the blind policy never presses RUN, so it can never measure
         if objective(stage, pos) == "failed":
             return 0.0
         if objective(stage, pos) == "ready":
@@ -124,14 +127,17 @@ def main() -> int:
             handle.write(rendered + "\n")
     else:
         print(rendered)
-    expected = {"independent": 0.5, "entangled": 1.0, "opposites": 1.0,
-                "feed_forward": 1.0, "core": 1.0}
+    expected = {"calibration": 1.0, "opposites": 1.0, "feed_forward": 1.0, "core": 1.0}
     for level in report.values():
         if isinstance(level, dict):
             for stage_id, result in level.items():
                 if stage_id in expected and abs(result["probability"] - expected[stage_id]) > 1e-9:
                     return 1
     no_cx = verify_stage(read_level("level3")["stages"][0], allow_cx=False)
+    # Level 1 needs the CX to prepare Phi+, and min_gates (H, CX; the run is free) stays 2.
+    calibration = report["level1"]["calibration"]
+    if calibration["min_gates"] != 2 or abs(calibration["blind_probability"]) > 1e-9:
+        return 1
     return 0 if no_cx["probability"] < 1.0 else 1
 
 
