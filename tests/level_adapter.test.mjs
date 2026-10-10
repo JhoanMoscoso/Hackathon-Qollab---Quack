@@ -78,3 +78,20 @@ test('legacy flat format (no stages) is returned unchanged', () => {
   assert.equal(stageView(flat, 0), flat);
   assert.deepEqual(flat.terminals[0].cell, [1, 2]);
 });
+
+test('decorations convert cell [row, col] -> [x, y] and keep sprite + footprint [w, h]', () => {
+  const level = loadLevel(1);
+  const v = stageView(level, 0);
+  assert.equal(v.decorations.length, level.stages[0].decorations.length);
+  const tank = v.decorations.find((d) => d.sprite === 'tank_chick');
+  assert.deepEqual(tank, { sprite: 'tank_chick', cell: [7, 1], footprint: [1, 2] }); // v2 [row 1, col 7]
+  const rug = v.decorations.find((d) => d.sprite === 'rug' && d.cell[0] === 13);
+  assert.deepEqual(rug, { sprite: 'rug', cell: [13, 3], footprint: [2, 1] });
+  // the input is not mutated
+  assert.deepEqual(level.stages[0].decorations.find((d) => d.sprite === 'tank_chick').cell, [1, 7]);
+});
+
+test('a stage without decorations yields an empty list', () => {
+  assert.deepEqual(stageView(loadLevel(2), 0).decorations, []);
+  assert.deepEqual(stageView(loadLevel(3), 0).decorations, []);
+});

@@ -17,10 +17,10 @@ export function isWall(grid, x, y) {
 /**
  * Parse a flat stage view ({ map, legend, objects, terminals }, see level_adapter.stageView)
  * into a grid description. Terminal cells are already [x, y]. Throws a clear Error if the map
- * is malformed or spawns are missing.
+ * is malformed or spawns are missing. `decorations` (optional) become grid.decorations, default [].
  */
 export function parseLevel(level) {
-  const { map, legend = {}, objects: objectCfg = {}, terminals: terminalCfg = [] } = level;
+  const { map, legend = {}, objects: objectCfg = {}, terminals: terminalCfg = [], decorations: decorationCfg = [] } = level;
   const id = level.id ?? '?';
   if (!Array.isArray(map) || map.length !== ROWS) {
     throw new Error(`Level "${id}": map must have ${ROWS} rows, got ${Array.isArray(map) ? map.length : typeof map}`);
@@ -42,6 +42,10 @@ export function parseLevel(level) {
     terminals: [],
     cnot: null,
     exits: { alice: null, bob: null },
+    // Visual layer only: never read by collision, interaction or the engine. cell = top-left [x, y].
+    decorations: decorationCfg.map((d) => ({
+      sprite: d.sprite, cell: [d.cell[0], d.cell[1]], footprint: d.footprint ? [d.footprint[0], d.footprint[1]] : [1, 1],
+    })),
   };
 
   const cnot = {};

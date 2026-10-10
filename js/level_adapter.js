@@ -10,6 +10,9 @@ function convertTerminal(t) {
   return out;
 }
 
+// Decorations are visual-only: sprite name, top-left cell and footprint [w, h] in tiles.
+const convertDecoration = (d) => ({ ...d, cell: toXY(d.cell) });
+
 /**
  * @param {object} level parsed levels/levelN.json (v2), or a legacy flat level (returned as is)
  * @param {number} stageIndex index into level.stages (snapshot.stage_index)
@@ -30,6 +33,7 @@ export function stageView(level, stageIndex) {
     legend: stage.legend ?? {},
     objects: stage.objects ?? {},
     terminals: (stage.terminals ?? []).map(convertTerminal),
+    decorations: (stage.decorations ?? []).map(convertDecoration),
     win: stage.win,
     failure_policy: stage.failure_policy,
     requires_run: stage.requires_run,

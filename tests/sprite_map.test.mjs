@@ -1,7 +1,9 @@
 // Tests for js/sprite_map.js (pure registry of selected sprite cells). Run: node --test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { TILE, SHEET_W, SHEET_H, ATLAS, DIRS, characterFrame, dirFromDelta, walkFrameIndex } from '../js/sprite_map.js';
+import {
+  TILE, SHEET_W, SHEET_H, ATLAS, DIRS, characterFrame, dirFromDelta, walkFrameIndex, isFloorDetail, decorSpritePos,
+} from '../js/sprite_map.js';
 
 const REQUIRED = [
   'floor', 'wall', 'wall_center', 'door_0', 'door_1', 'door_super',
@@ -85,4 +87,23 @@ test('walkFrameIndex alternates 0/1 at 8 fps while walking, 0 when idle or reduc
   assert.equal(walkFrameIndex(250, true, false), 0);
   assert.equal(walkFrameIndex(125, false, false), 0);
   assert.equal(walkFrameIndex(125, true, true), 0);
+});
+
+test('isFloorDetail: rugs and grates (and floor_* names) sit under the other decorations', () => {
+  for (const name of ['rug', 'grate', 'floor_crack']) assert.equal(isFloorDetail(name), true, name);
+  for (const name of ['tank_chick', 'tank_jelly', 'plant', 'wall_light', 'desk', '']) assert.equal(isFloorDetail(name), false, name);
+});
+
+test('decorSpritePos: integer, bottom-centre aligned inside the footprint', () => {
+  const tile = 32;
+  // full-footprint sprite: exactly on the cell
+  assert.deepEqual(decorSpritePos([7, 1], [1, 2], { w: 32, h: 64 }), [7 * tile, 1 * tile]);
+  // shorter than the footprint: bottom aligned, centred horizontally
+  assert.deepEqual(decorSpritePos([1, 4], [1, 2], { w: 32, h: 48 }), [1 * tile, 4 * tile + 16]);
+  // narrower and shorter than a 2x1 footprint (rug 50x32 in 64x32)
+  assert.deepEqual(decorSpritePos([5, 3], [2, 1], { w: 50, h: 32 }), [5 * tile + 7, 3 * tile]);
+  // odd leftover is floored so positions stay on integers
+  const [x] = decorSpritePos([5, 0], [1, 1], { w: 13, h: 32 });
+  assert.equal(x, 5 * tile + 9);
+  assert.ok(Number.isInteger(x));
 });

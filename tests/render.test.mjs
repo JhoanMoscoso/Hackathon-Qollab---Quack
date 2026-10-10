@@ -427,3 +427,128 @@ test('fallback: without SPRITES nothing calls drawImage and procedural shapes ar
   assert.ok(calls.some((c) => c.name === 'fillText' && c.args[0] === 'A'));
   assert.ok(calls.some((c) => c.name === 'fillText' && c.args[0] === '?'));
 });
+
+// ---------- lab decorations (separate atlas: SPRITES.decor) ----------
+const DECOR = { id: 'decor-atlas' };
+const DFRAMES = {
+  tank_chick: { x: 0, y: 0, w: 32, h: 64, footprint: [1, 2] },
+  tank_jelly: { x: 33, y: 0, w: 31, h: 64, footprint: [1, 2] },
+  plant: { x: 65, y: 0, w: 32, h: 48, footprint: [1, 2] },
+  rug: { x: 0, y: 65, w: 50, h: 32, footprint: [2, 1] },
+  grate: { x: 51, y: 65, w: 32, h: 32, footprint: [1, 1] },
+  wall_light: { x: 84, y: 65, w: 13, h: 32, footprint: [1, 1] },
+};
+const withDecor = (fn, { decor = { image: DECOR, frames: DFRAMES }, sheet = true } = {}) => {
+  globalThis.SPRITES = { ...(sheet ? { image: SHEET, frames: FRAMES, characters: { alice: ALICE, bob: BOB } } : {}), ...(decor ? { decor } : {}) };
+  try { return fn(); } finally { delete globalThis.SPRITES; }
+};
+const decorCalls = (calls) => calls.filter((c) => c.name === 'drawImage' && c.args[0] === DECOR);
+const drawL1 = (opts) => {
+  const { ctx, calls } = recCtx();
+  const world = worldOf(1);
+  createRenderer(canvasWith(ctx)).draw(world, opts?.snap ?? snap('1', '1'), view(), 0);
+  return { ctx, calls, world };
+};
+
+test('decor: every level 1 decoration is drawn once from the decor atlas at its packed size, on integers', () => withDecor(() => {
+  const { ctx, calls, world } = drawL1();
+  assert.equal(ctx.imageSmoothingEnabled, false);
+  const drawn = decorCalls(calls);
+  assert.equal(drawn.length, world.grid.decorations.length);
+  assert.equal(drawn.length, 12);
+  for (const c of drawn) {
+    const [, sx, sy, sw, sh, dx, dy, dw, dh] = c.args;
+    assert.ok([dx, dy, dw, dh].every(Number.isInteger));
+    assert.deepEqual([dw, dh], [sw, sh], '1:1, no scaling at draw time');
+    assert.ok(Object.values(DFRAMES).some((f) => f.x === sx && f.y === sy && f.w === sw && f.h === sh));
+  }
+  const find = (name, cx, cy) => drawn.find((c) => c.args[1] === DFRAMES[name].x && c.args[2] === DFRAMES[name].y
+    && c.args[5] >= cx * 32 && c.args[5] < cx * 32 + 32 && c.args[6] >= cy * 32 && c.args[6] < cy * 32 + 64);
+  // bottom-centre aligned in the footprint
+  assert.deepEqual(find('tank_chick', 7, 1).args.slice(5, 9), [224, 32, 32, 64]);
+  assert.deepEqual(find('tank_jelly', 12, 1).args.slice(5, 9), [12 * 32, 32, 31, 64]);
+  assert.deepEqual(find('plant', 1, 4).args.slice(5, 9), [32, 4 * 32 + 16, 32, 48]);
+  assert.deepEqual(find('plant', 18, 4).args.slice(5, 9), [18 * 32, 4 * 32 + 16, 32, 48]);
+  assert.deepEqual(find('rug', 5, 3).args.slice(5, 9), [5 * 32 + 7, 96, 50, 32]);
+  assert.deepEqual(find('rug', 13, 3).args.slice(5, 9), [13 * 32 + 7, 96, 50, 32]);
+  assert.deepEqual(find('wall_light', 5, 0).args.slice(5, 9), [5 * 32 + 9, 0, 13, 32]);
+  assert.deepEqual(find('wall_light', 14, 0).args.slice(5, 9), [14 * 32 + 9, 0, 13, 32]);
+  assert.equal(drawn.filter((c) => c.args[1] === DFRAMES.grate.x && c.args[2] === DFRAMES.grate.y).length, 4);
+}));
+
+test('decor: draw order is floor+walls, floor details, decorations, consoles/sensors/doors/exits, players, HUD', () => withDecor(() => {
+  const { calls } = drawL1();
+  const idx = (pred) => calls.map((c, i) => (pred(c) ? i : -1)).filter((i) => i >= 0);
+  const sheetFrame = (frameNames) => (c) => c.name === 'drawImage' && c.args[0] === SHEET
+    && frameNames.some((n) => c.args[1] === FRAMES[n].x && c.args[2] === FRAMES[n].y);
+  const lastFloorOrWall = Math.max(...idx(sheetFrame(['floor', 'wall', 'wall_center'])));
+  const isDetail = (c) => c.args[0] === DECOR && [DFRAMES.rug, DFRAMES.grate].some((f) => f.x === c.args[1] && f.y === c.args[2]);
+  const details = idx((c) => c.name === 'drawImage' && isDetail(c));
+  const others = idx((c) => c.name === 'drawImage' && c.args[0] === DECOR && !isDetail(c));
+  const objects = idx(sheetFrame(['door_1', 'door_0', 'sensor_idle', 'terminal_h', 'cnot_control', 'cnot_target', 'exit']));
+  const players = idx((c) => c.name === 'drawImage' && (c.args[0] === ALICE || c.args[0] === BOB));
+  assert.equal(details.length, 6);
+  assert.equal(others.length, 6);
+  assert.ok(lastFloorOrWall < Math.min(...details), 'floor and walls first');
+  assert.ok(Math.max(...details) < Math.min(...others), 'floor details before the other decorations');
+  assert.ok(Math.max(...others) < Math.min(...objects), 'decorations before consoles/sensors/doors/exits');
+  assert.ok(Math.max(...objects) < Math.min(...players), 'players after objects');
+}));
+
+test('decor: overlay (HUD) text is drawn after every decoration and player', () => withDecor(() => {
+  const { ctx, calls } = recCtx();
+  createRenderer(canvasWith(ctx)).draw(worldOf(1), snap('0', '0'), view({ overlay: 'win' }), 0);
+  const lastImage = Math.max(...calls.map((c, i) => (c.name === 'drawImage' ? i : -1)));
+  const overlayText = calls.findIndex((c) => c.name === 'fillText' && c.args[0] === 'Level complete');
+  assert.ok(overlayText > lastImage);
+}));
+
+test('decor: decorations are drawn even before the first snapshot (static scenery)', () => withDecor(() => {
+  const { ctx, calls } = recCtx();
+  createRenderer(canvasWith(ctx)).draw(worldOf(1), null, view(), 0);
+  assert.equal(decorCalls(calls).length, 12);
+}));
+
+test('decor: nothing is drawn when SPRITES.decor is absent (sprites still draw normally)', () => withDecor(() => {
+  const { calls } = drawL1();
+  assert.equal(decorCalls(calls).length, 0);
+  assert.ok(calls.some((c) => c.name === 'drawImage' && c.args[0] === SHEET));
+}, { decor: null }));
+
+test('decor: nothing is drawn without any spritesheet, and a decor-only SPRITES does not crash the base layers', () => {
+  delete globalThis.SPRITES;
+  assert.equal(drawL1().calls.filter((c) => c.name === 'drawImage').length, 0);
+  withDecor(() => {
+    const { calls } = drawL1();
+    assert.equal(decorCalls(calls).length, 12); // decor atlas alone is enough for scenery; base art is procedural
+  }, { sheet: false });
+});
+
+test('decor: unknown sprite names and levels without decorations draw nothing extra', () => withDecor(() => {
+  const world = worldOf(1);
+  world.grid.decorations = [{ sprite: 'unobtainium', cell: [3, 3], footprint: [1, 1] }, { sprite: 'grate', cell: [3, 3], footprint: [1, 1] }];
+  const { ctx, calls } = recCtx();
+  createRenderer(canvasWith(ctx)).draw(world, snap('1', '1'), view(), 0);
+  assert.equal(decorCalls(calls).length, 1);
+  const l2 = recCtx();
+  createRenderer(canvasWith(l2.ctx)).draw(worldOf(2), objSnap({ opp_A: '1', opp_B: '1' }), view(), 0);
+  assert.equal(decorCalls(l2.calls).length, 0);
+}));
+
+test('decor: no decoration rectangle overlaps a gameplay cell of level 1', () => withDecor(() => {
+  const { calls, world } = drawL1();
+  const cells = new Set([
+    ...world.terminals.map((t) => [t.x, t.y]), world.cnot.control, world.cnot.target,
+    ...world.doors.map((d) => [d.x, d.y]), ...world.sensors.map((s) => [s.x, s.y]), ...world.exits.map((e) => [e.x, e.y]),
+    [world.players.alice.x, world.players.alice.y], [world.players.bob.x, world.players.bob.y],
+  ].map(([x, y]) => `${x},${y}`));
+  assert.equal(cells.size, 11);
+  for (const c of decorCalls(calls)) {
+    const [, , , , , dx, dy, dw, dh] = c.args;
+    for (let y = Math.floor(dy / 32); y <= Math.floor((dy + dh - 1) / 32); y++) {
+      for (let x = Math.floor(dx / 32); x <= Math.floor((dx + dw - 1) / 32); x++) {
+        assert.ok(!cells.has(`${x},${y}`), `decoration pixels overlap gameplay cell ${x},${y}`);
+      }
+    }
+  }
+}));

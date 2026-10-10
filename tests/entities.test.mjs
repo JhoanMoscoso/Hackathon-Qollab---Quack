@@ -341,3 +341,44 @@ test('sensorsUnderPlayers: nothing for measured qubits or players off their sens
   place(w, 'alice', 1, 3);
   assert.deepEqual(sensorsUnderPlayers(w, l1snap({ validated: true })), []);
 });
+
+test('decorations never block: every covered floor cell can be walked onto and across', () => {
+  const w = w1();
+  assert.ok(w.grid.decorations.length > 0);
+  let checked = 0;
+  for (const d of w.grid.decorations) {
+    for (let y = d.cell[1]; y < d.cell[1] + d.footprint[1]; y++) {
+      for (let x = d.cell[0]; x < d.cell[0] + d.footprint[0]; x++) {
+        if (w.grid.tiles[y][x] === '#') continue; // wall lights sit on walls, which stay walls
+        const id = x < 9 ? 'alice' : 'bob';
+        const from = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]
+          .find(([fx, fy]) => w.grid.tiles[fy]?.[fx] === '.' && (fx < 9) === (x < 9));
+        assert.ok(from, `decoration cell ${x},${y} has a floor neighbour`);
+        place(w, id, ...from);
+        const ev = stepPlayer(w, id, x - from[0], y - from[1], l1snap());
+        assert.deepEqual(ev, [{ type: 'move', player: id, x, y }], `${d.sprite} at ${x},${y}`);
+        checked += 1;
+      }
+    }
+  }
+  assert.ok(checked >= 16, `checked ${checked} covered cells`);
+});
+
+test('walking a straight line across the rug, grate row and tank column raises no blocked events', () => {
+  const w = w1();
+  const snap = l1snap();
+  place(w, 'alice', 4, 3);
+  for (const x of [5, 6, 7]) assert.equal(stepPlayer(w, 'alice', 1, 0, snap)[0].type, 'move', `rug row x=${x}`);
+  place(w, 'alice', 7, 3);
+  for (const y of [2, 1]) assert.equal(stepPlayer(w, 'alice', 0, -1, snap)[0].type, 'move', `tank column y=${y}`); // tank_chick (7,1)-(7,2)
+  place(w, 'bob', 11, 3);
+  for (const x of [12, 13, 14]) assert.equal(stepPlayer(w, 'bob', 1, 0, snap)[0].type, 'move', `bob rug row x=${x}`);
+  place(w, 'bob', 12, 3);
+  for (const y of [2, 1]) assert.equal(stepPlayer(w, 'bob', 0, -1, snap)[0].type, 'move', `jelly tank column y=${y}`);
+});
+
+test('wall-light decorations do not make the top wall walkable', () => {
+  const w = w1();
+  place(w, 'alice', 5, 1);
+  assert.deepEqual(stepPlayer(w, 'alice', 0, -1, l1snap()), [{ type: 'blocked', reason: 'wall' }]);
+});

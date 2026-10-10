@@ -58,3 +58,22 @@ export function walkFrameIndex(t, walking, reduceMotion) {
   if (!walking || reduceMotion) return 0;
   return Math.floor((t * WALK_FPS) / 1000) % 2;
 }
+
+// ---- lab decorations (separate packed atlas, see assets/src/build_decorations.py) ----
+// Frames come from sprites.js (DECOR_FRAMES): name -> { x, y, w, h, footprint } already at 2x screen size.
+
+const FLOOR_DETAILS = new Set(['rug', 'grate']);
+
+/** Floor details are drawn before the other decorations (guide order: floor details, then decorations). */
+export const isFloorDetail = (name) => FLOOR_DETAILS.has(name) || String(name).startsWith('floor_');
+
+/**
+ * Screen [x, y] (integers) of a decoration sprite: bottom-centre aligned inside its footprint.
+ * @param {[number, number]} cell top-left tile [x, y]
+ * @param {[number, number]} footprint [w, h] in tiles
+ * @param {{ w: number, h: number }} frame packed sprite size in screen px
+ */
+export function decorSpritePos([cx, cy], [fw, fh], { w, h }) {
+  const px = TILE * 2; // 32 screen px per tile
+  return [cx * px + Math.floor((fw * px - w) / 2), cy * px + fh * px - h];
+}

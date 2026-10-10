@@ -139,3 +139,115 @@ def test_level1_doors_are_the_only_path_to_each_exit_and_sensors_are_reachable()
     assert cells["exit_B"] in reach(cells["bob_start"], {"door_A"})
     assert cells["exit_A"] not in reach(cells["alice_start"], {"door_A"})
     assert cells["exit_B"] not in reach(cells["bob_start"], {"door_B"})
+
+
+# ---- decorations: purely visual layer, validated but never read by the engine ----
+
+def _deco(stage, **fields):
+    deco = {"sprite": "plant", "cell": [4, 1], "footprint": [1, 2]}
+    deco.update(fields)
+    stage["decorations"] = [deco]
+
+
+@pytest.mark.parametrize("deco", [
+    {"sprite": "plant", "cell": [4, 1], "footprint": [1, 2]},      # floor
+    {"sprite": "rug", "cell": [3, 5], "footprint": [2, 1]},
+    {"sprite": "wall_light", "cell": [0, 5], "footprint": [1, 1]},  # wall cell, wall_ prefix
+])
+def test_valid_decorations_are_accepted(deco):
+    level = read_level("level1")
+    level["stages"][0]["decorations"] = [deco]
+    assert validate_level(level)["stages"][0]["decorations"] == [deco]
+
+
+@pytest.mark.parametrize("deco", [
+    "plant",
+    {"cell": [4, 1], "footprint": [1, 1]},                                   # no sprite
+    {"sprite": "", "cell": [4, 1], "footprint": [1, 1]},
+    {"sprite": 3, "cell": [4, 1], "footprint": [1, 1]},
+    {"sprite": "plant", "cell": [4], "footprint": [1, 1]},
+    {"sprite": "plant", "cell": [True, 1], "footprint": [1, 1]},
+    {"sprite": "plant", "cell": [4, 1.0], "footprint": [1, 1]},
+    {"sprite": "plant", "cell": [-1, 1], "footprint": [1, 1]},
+    {"sprite": "plant", "cell": [12, 1], "footprint": [1, 1]},               # row out of map
+    {"sprite": "plant", "cell": [4, 20], "footprint": [1, 1]},               # col out of map
+    {"sprite": "plant", "cell": [4, 1]},                                     # no footprint
+    {"sprite": "plant", "cell": [4, 1], "footprint": [0, 1]},
+    {"sprite": "plant", "cell": [4, 1], "footprint": [1, -2]},
+    {"sprite": "plant", "cell": [4, 1], "footprint": [True, 1]},
+    {"sprite": "plant", "cell": [4, 1], "footprint": [1, 1, 1]},
+    {"sprite": "plant", "cell": [4, 19], "footprint": [2, 1]},               # footprint leaves the map
+    {"sprite": "plant", "cell": [11, 1], "footprint": [1, 2]},
+    {"sprite": "plant", "cell": [0, 5], "footprint": [1, 1]},                # wall cell, not wall_*
+])
+def test_invalid_decorations_are_rejected(deco):
+    level = read_level("level1")
+    stage = level["stages"][0]
+    stage["decorations"] = [deco]
+    with pytest.raises(ValueError):
+        validate_level(level)
+
+
+def test_decorations_must_be_a_list():
+    level = read_level("level1")
+    level["stages"][0]["decorations"] = {"sprite": "plant"}
+    with pytest.raises(ValueError):
+        validate_level(level)
+
+
+@pytest.mark.parametrize("cell", [
+    [1, 1],   # alice_start
+    [1, 16],  # bob_start
+    [1, 3],   # alice_h terminal
+    [4, 9],   # shared_cx
+    [4, 10],  # shared_cx_target
+    [3, 2],   # sensor_q0
+    [3, 17],  # sensor_q1
+    [6, 4],   # door_A
+    [7, 4],   # exit_A
+    [6, 15],  # door_B
+])
+def test_decorations_never_cover_interactive_cells(cell):
+    level = read_level("level1")
+    level["stages"][0]["decorations"] = [{"sprite": "rug", "cell": cell, "footprint": [1, 1]}]
+    with pytest.raises(ValueError):
+        validate_level(level)
+
+
+def test_multi_cell_footprint_is_checked_on_every_covered_cell():
+    level = read_level("level1")
+    # rows 3..4 at col 9: row 3 is wall, row 4 is the CX control
+    level["stages"][0]["decorations"] = [{"sprite": "wall_light", "cell": [1, 2], "footprint": [1, 2]}]
+    # covers (1,2),(2,2): plain floor, accepted
+    validate_level(level)
+    level["stages"][0]["decorations"] = [{"sprite": "wall_light", "cell": [0, 3], "footprint": [1, 2]}]
+    with pytest.raises(ValueError):  # covers (0,3) wall and (1,3) = alice_h
+        validate_level(level)
+
+
+def test_level1_decorations_are_visual_only_and_off_the_critical_cells():
+    from quantum.verify import verify_stage
+    level = read_level("level1")
+    stage = level["stages"][0]
+    decorations = stage["decorations"]
+    assert {d["sprite"] for d in decorations} == {"tank_chick", "tank_jelly", "plant", "rug", "grate", "wall_light"}
+    legend, grid = stage["legend"], stage["map"]
+    # Cells in front of each door stay clear so the doorway reads and is walkable.
+    in_front = {(5, 4), (5, 15)}
+    covered = set()
+    for d in decorations:
+        row, col = d["cell"]
+        w, h = d["footprint"]
+        for r in range(row, row + h):
+            for c in range(col, col + w):
+                covered.add((r, c))
+                label = legend[grid[r][c]]
+                assert label in {"floor", "wall"}, (d, r, c, label)
+                if label == "wall":
+                    assert d["sprite"].startswith("wall_") and r == 0
+    assert not covered & in_front
+    # The engine ignores the layer: same verification report with or without it.
+    stripped = copy.deepcopy(stage)
+    del stripped["decorations"]
+    assert verify_stage(stage) == verify_stage(stripped)
+

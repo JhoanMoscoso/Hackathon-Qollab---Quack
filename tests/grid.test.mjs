@@ -204,3 +204,42 @@ test('legend-only shared_cx / shared_cx_target (no terminal entry) still define 
   l.legend.c = 'shared_cx_target';
   assert.deepEqual(parseLevel(l).cnot, { control: [8, 5], target: [12, 5], terminalId: 'shared_cx' });
 });
+
+test('grid.decorations defaults to [] and passes the stage list through as [x, y] cells', () => {
+  assert.deepEqual(gridOf(2).decorations, []);
+  const g = gridOf(1);
+  assert.ok(g.decorations.length > 0);
+  const t = g.decorations.find((d) => d.sprite === 'tank_jelly');
+  assert.deepEqual(t, { sprite: 'tank_jelly', cell: [12, 1], footprint: [1, 2] });
+  const flat = level();
+  delete flat.decorations;
+  assert.deepEqual(parseLevel(flat).decorations, []);
+  flat.decorations = [{ sprite: 'rug', cell: [5, 3] }]; // footprint defaults to 1x1
+  assert.deepEqual(parseLevel(flat).decorations, [{ sprite: 'rug', cell: [5, 3], footprint: [1, 1] }]);
+});
+
+test('decorations never change tiles, spawns, terminals or objects', () => {
+  const withDeco = gridOf(1);
+  const flat = level();
+  flat.decorations = [];
+  const without = parseLevel(flat);
+  const strip = ({ decorations, ...rest }) => rest;
+  assert.deepEqual(strip(withDeco), strip(without));
+});
+
+test('level 1 decorations avoid every gameplay cell and the cells in front of the doors', () => {
+  const g = gridOf(1);
+  const gameplay = new Set([
+    g.spawns.alice, g.spawns.bob, ...g.sensors.map((s) => s.cell), ...g.objects.map((o) => o.cell),
+    ...g.terminals.map((t) => t.cell), g.cnot.control, g.cnot.target, g.exits.alice, g.exits.bob,
+    [4, 5], [15, 5], // cells directly in front of door_A / door_B
+  ].map(([x, y]) => cellKey(x, y)));
+  for (const d of g.decorations) {
+    for (let y = d.cell[1]; y < d.cell[1] + d.footprint[1]; y++) {
+      for (let x = d.cell[0]; x < d.cell[0] + d.footprint[0]; x++) {
+        assert.ok(!gameplay.has(cellKey(x, y)), `${d.sprite} covers gameplay cell ${x},${y}`);
+        if (isWall(g, x, y)) assert.ok(d.sprite.startsWith('wall_') && y === 0, `${d.sprite} on wall ${x},${y}`);
+      }
+    }
+  }
+});
