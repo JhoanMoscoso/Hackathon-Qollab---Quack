@@ -38,6 +38,15 @@ def test_spec_reachable_includes_measurement_branches_without_gates():
     assert canonical_key(Statevector.from_label("11")) in result
 
 
+def test_reachable_owner_mapping_keeps_bobs_cx_control_on_alice():
+    initial = QuantumCircuit(2)
+    result = reachable(initial, {"alice": ["h"], "bob": ["cx"], "shared": []}, 2, 2)
+    bell = QuantumCircuit(2)
+    bell.h(0)
+    bell.cx(0, 1)
+    assert canonical_key(Statevector(bell)) in result
+
+
 def test_full_campaign_batch_runs_locally_and_is_idempotent_across_levels():
     class Counted:
         def __init__(self):
@@ -53,7 +62,7 @@ def test_full_campaign_batch_runs_locally_and_is_idempotent_across_levels():
         backend, engine = Counted(), Engine(seed=1)
         result = json.loads(await engine.precompute(backend, 50, "batch"))
         assert result["source"] == "backend"
-        assert result["circuits"] == result["states"] == 21
+        assert result["circuits"] == result["states"] == 20
         engine.new_session("level3")
         engine.reset_level()
         again = json.loads(await engine.precompute(backend, 200, "single"))
@@ -83,7 +92,7 @@ def test_default_campaign_pack_covers_ten_priority_states_in_one_circuit():
         assert summary["strategy"] == "packed"
         assert summary["circuits"] == 1
         assert summary["submitted_states"] == summary["backend_states"] == 10
-        assert summary["states"] == 21 and summary["source"] == "mixed"
+        assert summary["states"] == 20 and summary["source"] == "mixed"
         assert summary["packed_manifest"][-1]["clbits"] == [18, 19]
         assert summary["submission_attempted"] is True
     asyncio.run(check())

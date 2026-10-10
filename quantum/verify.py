@@ -58,7 +58,8 @@ def _report(stage, initial, num_qubits, allow_cx):
             return node_ids[key]
         node_id = f"n{len(node_ids)}"
         node_ids[key] = node_id
-        nodes.append({"id": node_id, "state": key[0], "measured": key[1], "actions": []})
+        nodes.append({"id": node_id, "state": key[0], "measured": key[1],
+                      "circuit_validated": pos.circuit_validated, "actions": []})
         record = memo[key]
         for _, _, _, action, child in record[3]:
             edges = []
@@ -78,6 +79,8 @@ def _report(stage, initial, num_qubits, allow_cx):
             return 1.0 if objective(stage, pos) == "ready" else 0.0
         if pos.measured[q] is not None:
             return blind(pos, q + 1)
+        if ("measure", q) not in actions(stage, pos, allow_cx=allow_cx):
+            return 0.0  # L1 cannot bypass preparation/RUN by measuring |00>.
         return sum(p * blind(nxt, q + 1) for p, _, nxt in branches(stage, pos, ("measure", q)))
 
     # Count all reachable logical nodes and physical states using the requested gate restriction.
@@ -124,7 +127,7 @@ def main() -> int:
             handle.write(rendered + "\n")
     else:
         print(rendered)
-    expected = {"independent": 0.5, "entangled": 1.0, "opposites": 1.0,
+    expected = {"bell_preparation": 1.0, "opposites": 1.0,
                 "feed_forward": 1.0, "core": 1.0}
     for level in report.values():
         if isinstance(level, dict):

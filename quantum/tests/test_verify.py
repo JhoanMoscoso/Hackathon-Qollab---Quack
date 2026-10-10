@@ -9,8 +9,7 @@ def stage(level_id, stage_id):
 
 
 def test_campaign_probability_and_cost_targets():
-    cases = [("level1", "independent", .5, 0),
-             ("level1", "entangled", 1, 0),
+    cases = [("level1", "bell_preparation", 1, 2),
              ("level2", "opposites", 1, 1),
              ("level2", "feed_forward", 1, 1),
              ("level3", "core", 1, 3)]
@@ -18,10 +17,17 @@ def test_campaign_probability_and_cost_targets():
         result = verify_stage(stage(level, name))
         assert result["probability"] == pytest.approx(probability)
         assert result["min_gates"] == gates
-        blind = {"independent": .5, "entangled": 1, "opposites": 0,
+        blind = {"bell_preparation": 0, "opposites": 0,
                  "feed_forward": .5, "core": 0}[name]
         assert result["blind_probability"] == pytest.approx(blind)
         assert result["witness"]["nodes"]
+
+
+def test_l1_verifier_models_run_validation_before_measurements():
+    result = verify_stage(stage("level1", "bell_preparation"))
+    assert result["min_measurements"] == 2
+    assert any(a["action"][0] == "run_circuit" for node in result["witness"]["nodes"] for a in node["actions"])
+    assert verify_stage(stage("level1", "bell_preparation"), allow_cx=False)["probability"] == 0
 
 
 def test_core_without_cx_cannot_guarantee_success():
