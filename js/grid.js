@@ -44,6 +44,7 @@ export function parseLevel(level) {
   };
 
   const cnot = {};
+  const cnotBoth = []; // spec-style legend: one char "cnot_control/target" on both sides
   for (let y = 0; y < ROWS; y++) {
     for (let x = 0; x < COLS; x++) {
       const name = legend[tiles[y][x]];
@@ -54,6 +55,7 @@ export function parseLevel(level) {
       else if (name === 'bob_start') grid.spawns.bob = cell;
       else if (name === 'cnot_control') cnot.control = cell;
       else if (name === 'cnot_target') cnot.target = cell;
+      else if (name === 'cnot_control/target') cnotBoth.push(cell);
       else if (name === 'exit_A') grid.exits.alice = cell;
       else if (name === 'exit_B') grid.exits.bob = cell;
       else if (sensor) grid.sensors.push({ qubit: Number(sensor[1]), cell });
@@ -67,13 +69,18 @@ export function parseLevel(level) {
   for (const key of ['alice', 'bob']) {
     if (!grid.spawns[key]) throw new Error(`Level "${id}": missing spawn ${key}_start in map/legend`);
   }
+  if (cnotBoth.length === 2) { // scan order is row-major, so sort by x: smaller x = control (Alice's side)
+    const [control, target] = [...cnotBoth].sort((p, q) => p[0] - q[0]);
+    cnot.control ??= control;
+    cnot.target ??= target;
+  }
   if (cnot.control && cnot.target) grid.cnot = cnot;
 
   for (const t of terminalCfg) {
     const [x, y] = t.cell;
-    const name = inBounds(x, y) ? legend[tiles[y][x]] : undefined;
-    if (!name || !name.startsWith('terminal')) {
-      throw new Error(`Level "${id}": terminal at [${x},${y}] has no matching terminal legend char in map`);
+    // The map may omit a terminal legend char (spec-style levels): any in-bounds non-wall cell is fine.
+    if (isWall({ tiles }, x, y)) {
+      throw new Error(`Level "${id}": terminal at [${x},${y}] is out of bounds or on a wall`);
     }
     grid.terminals.push({ cell: [x, y], gate: t.gate, owner: t.owner, uses: t.uses });
   }

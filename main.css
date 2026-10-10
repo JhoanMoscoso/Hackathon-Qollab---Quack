@@ -93,7 +93,8 @@ button:hover { border-color: var(--alice); }
 .dbg-bar-fill { display: block; height: 100%; width: 0; background: var(--alice); }
 .dbg-bar-pct { text-align: right; }
 
-.dbg-circuit { display: block; max-width: 100%; height: auto; }
+.dbg-circuit-wrap { overflow-x: auto; max-width: 100%; }
+.dbg-circuit { display: block; max-width: none; flex: none; } /* natural size, never shrunk */
 .c-wire { stroke: var(--muted); stroke-width: 1.5; }
 .c-label { fill: var(--text); font: 11px var(--mono); }
 .c-box { fill: var(--panel-2); stroke: var(--text); stroke-width: 1.5; }
@@ -109,6 +110,8 @@ button:hover { border-color: var(--alice); }
 .dbg-stats dd { margin: 0; }
 .dbg-msg { min-height: 1.5em; margin: 8px 0 0; color: var(--text); }
 .dbg-msg.is-error { color: var(--error); }
+
+#menu-error { color: var(--error); font-weight: 600; max-width: 70ch; }
 
 #narrator:empty { display: none; }
 #narrator { flex-basis: 100%; }

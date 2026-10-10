@@ -111,8 +111,62 @@ test('throws when a spawn is missing', () => {
   assert.throws(() => parseLevel(l), /bob_start/);
 });
 
-test('throws when a terminal cell has no legend char', () => {
+test('terminal on a wall or out of bounds still throws', () => {
+  const l = level();
+  l.terminals[0].cell = [0, 0];
+  assert.throws(() => parseLevel(l), /terminal/);
+  l.terminals[0].cell = [20, 5];
+  assert.throws(() => parseLevel(l), /terminal/);
+  l.terminals[0].cell = [2, -1];
+  assert.throws(() => parseLevel(l), /terminal/);
+});
+
+test('terminal on a floor cell without a terminal legend char is accepted', () => {
   const l = level();
   l.terminals[0].cell = [5, 7];
-  assert.throws(() => parseLevel(l), /terminal/);
+  const g = parseLevel(l);
+  assert.deepEqual(g.terminals[0], { cell: [5, 7], gate: 'h', owner: 'alice', uses: 1 });
+});
+
+// Spec-style level (docs/03): one legend char "cnot_control/target" on both sides of the wall.
+const specLevel = (row5) => ({
+  id: 'spec',
+  map: [
+    '####################',
+    '#..................#',
+    '#.A..............B.#',
+    '#..................#',
+    '#..S..........s....#',
+    row5,
+    '#..................#',
+    '#..................#',
+    '#.D..............d.#',
+    '#.E..............e.#',
+    '#..................#',
+    '####################',
+  ],
+  legend: {
+    A: 'alice_start', B: 'bob_start', S: 'sensor_q0', s: 'sensor_q1',
+    D: 'door_A', d: 'door_B', C: 'cnot_control/target', E: 'exit_A', e: 'exit_B',
+  },
+  objects: {
+    door_A: { qubit: 0, open_on: 0, lethal: false },
+    door_B: { qubit: 1, open_on: 0, lethal: false },
+  },
+  terminals: [{ cell: [3, 6], gate: 'h', owner: 'alice', uses: 1 }],
+});
+const ROW5 = '#.......C###C......#';
+
+test('spec-style fixture rows are 20 wide', () => {
+  assert.equal(ROW5.length, 20);
+});
+
+test('spec-style cnot_control/target: smaller x is control, larger x is target', () => {
+  const g = parseLevel(specLevel(ROW5));
+  assert.deepEqual(g.cnot, { control: [8, 5], target: [12, 5] });
+  assert.deepEqual(g.terminals[0].cell, [3, 6]); // floor cell without terminal legend char
+});
+
+test('spec-style cnot with a single cell yields no cnot', () => {
+  assert.equal(parseLevel(specLevel('#.......C..........#')).cnot, null);
 });

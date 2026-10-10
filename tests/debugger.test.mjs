@@ -44,6 +44,27 @@ test('circuitColumns ignores malformed entries', () => {
   assert.deepEqual(circuitColumns([null, [], ['h', 0]]), [{ kind: 'gate', label: 'H', qubit: 0 }]);
 });
 
+test('circuitColumns: measurement aliases m / M / measure are equivalent', () => {
+  for (const name of ['m', 'M', 'measure']) {
+    assert.deepEqual(circuitColumns([[name, 1, 0]]), [{ kind: 'm', label: 'M', qubit: 1, outcome: 0 }], name);
+  }
+});
+
+test('circuitColumns: measurement without outcome keeps label "M"', () => {
+  const [col] = circuitColumns([['m', 0]]);
+  assert.equal(col.kind, 'm');
+  assert.equal(col.label, 'M');
+  assert.equal(col.outcome, undefined);
+});
+
+test('circuitColumns: unknown gate names are uppercased and cut to 3 chars', () => {
+  assert.equal(circuitColumns([['sdg', 0]])[0].label, 'SDG');
+  assert.equal(circuitColumns([['rotation', 1]])[0].label, 'ROT');
+  assert.equal(circuitColumns([['cx', 0, 1]])[0].kind, 'cx');
+  assert.equal(circuitColumns([['CX', 0, 1]])[0].kind, 'cx');
+  assert.equal(circuitColumns([[7, 0]])[0].label, '7');
+});
+
 const bell = { ket: '0.707|00⟩ + 0.707|11⟩', bell_label: 'Phi+', entangled: true };
 
 test('liveText: ket + Bell label + measurement', () => {

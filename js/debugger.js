@@ -13,15 +13,22 @@ export function barData(probs) {
   });
 }
 
-/** One circuit column per history entry: ["h",0] | ["cx",c,t] | ["m",q,outcome]. */
+const MEASURE_NAMES = new Set(['m', 'measure']);
+
+/**
+ * One circuit column per history entry: ["h",0] | ["cx",c,t] | ["m",q,outcome].
+ * Tolerant: "m"/"M"/"measure" are the same, a missing outcome keeps the label "M", and unknown
+ * gate names get an uppercase label cut to 3 characters.
+ */
 export function circuitColumns(history) {
   const cols = [];
   for (const entry of history ?? []) {
     if (!Array.isArray(entry) || entry.length === 0) continue;
     const [name, a, b] = entry;
-    if (name === 'cx') cols.push({ kind: 'cx', label: 'CX', control: a, target: b });
-    else if (name === 'm') cols.push({ kind: 'm', label: 'M', qubit: a, outcome: b });
-    else cols.push({ kind: 'gate', label: String(name).toUpperCase(), qubit: a });
+    const key = String(name).toLowerCase();
+    if (key === 'cx') cols.push({ kind: 'cx', label: 'CX', control: a, target: b });
+    else if (MEASURE_NAMES.has(key)) cols.push({ kind: 'm', label: 'M', qubit: a, outcome: b });
+    else cols.push({ kind: 'gate', label: String(name).toUpperCase().slice(0, 3), qubit: a });
   }
   return cols;
 }
@@ -64,15 +71,18 @@ function drawCircuit(svg, cols) {
   svg.replaceChildren();
   const width = LEFT + Math.max(cols.length, 4) * COL_W + 8;
   svg.setAttribute('viewBox', `0 0 ${width} 84`);
-  svg.setAttribute('width', width);
+  svg.setAttribute('width', width); // natural size: never scaled below it, the wrapper scrolls instead
+  svg.setAttribute('height', 84);
   PLAYER_NAMES.forEach((name, q) => {
     svg.append(svgEl('line', { x1: 66, y1: WIRE_Y[q], x2: width - 4, y2: WIRE_Y[q], class: 'c-wire' }));
     svg.append(svgEl('text', { x: 2, y: WIRE_Y[q] + 4, class: 'c-label' }, `q${q} ${name}`));
   });
   cols.forEach((col, i) => {
     const cx = LEFT + i * COL_W + COL_W / 2;
+    const wires = col.kind === 'cx' ? [col.control, col.target] : [col.qubit];
+    if (wires.some((w) => WIRE_Y[w] === undefined)) return; // malformed qubit index: skip, never NaN
     if (col.kind === 'gate') drawBox(svg, cx, WIRE_Y[col.qubit], col.label, 'c-gate');
-    else if (col.kind === 'm') drawBox(svg, cx, WIRE_Y[col.qubit], `M${col.outcome}`, 'c-meas');
+    else if (col.kind === 'm') drawBox(svg, cx, WIRE_Y[col.qubit], `M${col.outcome ?? ''}`, 'c-meas');
     else {
       svg.append(svgEl('line', { x1: cx, y1: WIRE_Y[col.control], x2: cx, y2: WIRE_Y[col.target], class: 'c-link' }));
       svg.append(svgEl('circle', { cx, cy: WIRE_Y[col.control], r: 5, class: 'c-dot' }));
@@ -106,6 +116,11 @@ export function createDebugger(rootEl, liveEl) {
   });
   const circuitTitle = htmlEl('h3', 'dbg-sub', 'Circuit');
   const svg = svgEl('svg', { class: 'dbg-circuit', role: 'img', 'aria-label': 'Circuit diagram' });
+  const circuitWrap = htmlEl('div', 'dbg-circuit-wrap');
+  circuitWrap.tabIndex = 0; // keyboard-scrollable when the circuit outgrows the panel
+  circuitWrap.setAttribute('role', 'group');
+  circuitWrap.setAttribute('aria-label', 'Circuit diagram (scrollable)');
+  circuitWrap.append(svg);
   const stats = htmlEl('dl', 'dbg-stats');
   const stat = (name) => {
     const dt = htmlEl('dt', null, name);
@@ -118,7 +133,7 @@ export function createDebugger(rootEl, liveEl) {
   const entangledEl = stat('Entangled');
   const msg = htmlEl('p', 'dbg-msg');
 
-  rootEl.replaceChildren(title, ket, bars, circuitTitle, svg, stats, msg);
+  rootEl.replaceChildren(title, ket, bars, circuitTitle, circuitWrap, stats, msg);
   drawCircuit(svg, []);
 
   let lastLive = null;
@@ -134,7 +149,7 @@ export function createDebugger(rootEl, liveEl) {
         const cols = circuitColumns(snap.history);
         drawCircuit(svg, cols);
         svg.setAttribute('aria-label', cols.length
-          ? `Circuit: ${cols.map((c) => c.label + (c.kind === 'm' ? c.outcome : '')).join(', ')}`
+          ? `Circuit: ${cols.map((c) => c.label + (c.kind === 'm' ? (c.outcome ?? '') : '')).join(', ')}`
           : 'Circuit: empty');
         gatesLeft.textContent = String(snap.gates_left);
         bellEl.textContent = snap.bell_label ?? 'none';

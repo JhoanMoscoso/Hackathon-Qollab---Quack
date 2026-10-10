@@ -26,6 +26,7 @@ export const COLORS = {
   overlay: 'rgba(8, 10, 14, 0.82)',
 };
 
+export const ON_ONE = '#000000'; // glyph color on COLORS.one, contrast 4.83:1
 const FONT = 'ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace';
 const playerColor = (id) => (id === 'alice' ? COLORS.alice : COLORS.bob);
 const px = (cell) => cell * CELL;
@@ -65,6 +66,22 @@ function circle(ctx, cx, cy, r, { fill, stroke, width = 2 } = {}) {
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   if (fill) { ctx.fillStyle = fill; ctx.fill(); }
   if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = width; ctx.stroke(); }
+}
+
+/** "Used up / already measured" badge: a check mark on a light disc, always drawn at full alpha. */
+function drawDoneBadge(ctx, x, y) {
+  const cx = x + CELL - 9;
+  const cy = y + 9;
+  circle(ctx, cx, cy, 6, { fill: COLORS.text });
+  ctx.save();
+  ctx.strokeStyle = '#0E1116';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - 3, cy);
+  ctx.lineTo(cx - 1, cy + 3);
+  ctx.lineTo(cx + 3, cy - 3);
+  ctx.stroke();
+  ctx.restore();
 }
 
 // ---------- layers ----------
@@ -137,9 +154,10 @@ function drawDoor(ctx, door, snap, t, reduceMotion) {
     } else if (state === '1') {
       ctx.fillStyle = COLORS.one;
       ctx.fillRect(x + 2, y + 2, CELL - 4, CELL - 4);
-      line(ctx, x + 8, y + 8, x + CELL - 8, y + CELL - 8, '#0E1116', 3);
-      line(ctx, x + CELL - 8, y + 8, x + 8, y + CELL - 8, '#0E1116', 3);
-      text(ctx, '1', x + CELL - 7, y + 8, { size: 10, color: '#0E1116' });
+      // Pure black on #D64550 = 4.83:1 (white would be 4.35:1, below the 4.5:1 text minimum).
+      line(ctx, x + 8, y + 8, x + CELL - 8, y + CELL - 8, ON_ONE, 3);
+      line(ctx, x + CELL - 8, y + 8, x + 8, y + CELL - 8, ON_ONE, 3);
+      text(ctx, '1', x + CELL - 7, y + 8, { size: 10, color: ON_ONE });
     } else {
       const shift = reduceMotion ? 0 : (Math.floor(t / 250) % 4) * 2; // 4 fps
       drawStripes(ctx, x, y, COLORS.superpos, shift);
@@ -162,32 +180,40 @@ function drawSensor(ctx, sensor, snap) {
   const cx = x + CELL / 2;
   const cy = y + CELL / 2 - 3;
   const done = snap.measured?.[sensor.qubit] != null;
-  ctx.save();
-  if (done) ctx.globalAlpha = 0.4;
-  if (!drawSprite(ctx, 'sensor', x, y)) {
-    circle(ctx, cx, cy, 11, { stroke: COLORS.text, width: 2 });
-    circle(ctx, cx, cy, 5, { fill: COLORS.text });
-    circle(ctx, cx, cy, 2, { fill: '#0E1116' });
-    text(ctx, `Q${sensor.qubit}`, cx, y + CELL - 5, { size: 9 });
-  }
-  ctx.restore();
+  const sprite = (() => {
+    ctx.save();
+    if (done) ctx.globalAlpha = 0.4; // dim the base shape only
+    const drawn = drawSprite(ctx, 'sensor', x, y);
+    if (!drawn) {
+      circle(ctx, cx, cy, 11, { stroke: COLORS.text, width: 2 });
+      circle(ctx, cx, cy, 5, { fill: COLORS.text });
+      circle(ctx, cx, cy, 2, { fill: '#0E1116' });
+    }
+    ctx.restore();
+    return drawn;
+  })();
+  if (!sprite) text(ctx, `Q${sensor.qubit}`, cx, y + CELL - 5, { size: 9 }); // label stays at full alpha
+  if (done) drawDoneBadge(ctx, x, y);
 }
 
 function drawTerminal(ctx, term) {
   const x = px(term.x);
   const y = px(term.y);
   const color = playerColor(term.owner);
+  const used = term.usesLeft <= 0;
   ctx.save();
-  if (term.usesLeft <= 0) ctx.globalAlpha = 0.4;
-  if (!drawSprite(ctx, `terminal_${term.gate}`, x, y)) {
+  if (used) ctx.globalAlpha = 0.4; // dim the base shape only
+  const drawn = drawSprite(ctx, `terminal_${term.gate}`, x, y);
+  if (!drawn) {
     ctx.fillStyle = '#0E1116';
     ctx.fillRect(x + 3, y + 3, CELL - 6, CELL - 6);
     ctx.strokeStyle = color;
     ctx.lineWidth = 3;
     ctx.strokeRect(x + 3, y + 3, CELL - 6, CELL - 6);
-    text(ctx, term.gate.toUpperCase(), x + CELL / 2, y + CELL / 2, { size: 16, color });
   }
   ctx.restore();
+  if (!drawn) text(ctx, term.gate.toUpperCase(), x + CELL / 2, y + CELL / 2, { size: 16, color }); // full alpha
+  if (used) drawDoneBadge(ctx, x, y);
 }
 
 function drawCnot(ctx, cnot) {
