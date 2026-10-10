@@ -1,0 +1,4 @@
+body { background: #0b0e14; color: #e6edf3; font: 16px system-ui, sans-serif; padding: 1rem; }
+canvas { max-width: 100%; background: #141b26; border: 2px solid #8d9baa; }
+canvas:focus-visible { outline: 3px solid #58a6ff; outline-offset: 3px; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; }
