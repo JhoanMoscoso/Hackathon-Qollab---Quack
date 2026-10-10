@@ -1,0 +1,73 @@
+ENTANGLED — SPRITESHEET INDEX (v0.2)
+Canvas: 256x192 px; cells: 16x16 px; grid: 16 columns x 12 rows.
+Coordinates are (column,row), zero-based. Draw at native size or integer multiples.
+Transparent background. Some slots are placeholders/visual variations pending in-game review.
+
+ROW 0 — ALICE CHICK / QUANTUM STATES / FX
+(0,0): alice_idle_down
+(1-3,0): alice_directional_or_walk_variants
+(4-7,0): alice_idle, alice_walk, alice_wave, alice_measure
+Standalone directional animation strip: assets/characters/alice_walk_4dir.png
+Standalone action strip: assets/characters/alice_actions.png
+(8,0): state_0_orb; (9,0): state_1_orb; (10,0): state_superposition_striped
+(11-15,0): sparkle/impact variants
+
+ROW 1 — BOB CHICK / FX
+(0,1): bob_idle_down
+(1-3,1): bob_directional_or_walk_variants
+(4-7,1): bob_idle, bob_walk, bob_wave, bob_measure
+Standalone directional animation strip: assets/characters/bob_walk_4dir.png
+Standalone action strip: assets/characters/bob_actions.png
+(8-15,1): quantum burst and impact variants
+
+ROW 2 — DOORS / GATES
+(0-3,2): lab door variations
+(4-7,2): prison gate variations
+(8-11,2): core gate variations
+(12-15,2): door frame / locked / unlocked variants
+
+ROW 3 — SENSORS / TERMINALS
+(0-7,3): sensor states (idle, 0, 1, superposition, Alice, Bob, active, core)
+(8-15,3): terminal / switch / alarm states
+
+ROW 4 — LAB TILE FAMILY
+(0-15,4): lab floor, wall, glass, console, tube, corner and detail variants
+
+ROW 5 — PRISON TILE FAMILY
+(0-15,5): prison floor, bars, wall, bed, light, detail and corner variants
+
+ROW 6 — CORE TILE FAMILY
+(0-15,6): core floor, node, wall, energy line, portal and detail variants
+
+ROW 7 — FX / ENERGY LINKS
+(0-15,7): beam, ring, pulse, spark, bridge and collapse variants
+
+ROW 8 — OPERATION / HUD ICONS
+(0-15,8): H, X, Z, CX, M, link, target, gear, alert, help, state 0, state 1, move, cancel, confirm, ellipsis
+
+ROW 9 — UI PANELS
+(0-15,9): panel corners, edges, dividers, dialogue box pieces and HUD frame parts
+
+ROW 10 — PROP DETAILS
+(0-15,10): lab console, prison detail, core node and neutral prop variants
+
+ROW 11 — FLOOR / EXIT / STATE MARKERS
+(0-3,11): floor patterns
+(4-7,11): exit closed/open and alarm markers
+(8-11,11): quantum state markers; superposition uses stripes
+(12-15,11): terminal/status indicators
+
+INTEGRATION NOTES
+- Use source sheet at 1x; for game display use nearest-neighbor scaling.
+- Canvas target is 640x384; tile grid is 20x12, tile size 16px, rendered at 2x.
+- Alice accent #4ADBE6; Bob #F5A742.
+- State 0 #5BBF6A; state 1 #D64550; superposition #A66CFF plus horizontal stripes.
+- Keep shape/pattern cues as well as color; never encode state using color alone.
+- This is a first-pass hand-authored base sheet. Review individual tiles in game before final lock.
+
+CHARACTER UPDATE v0.3
+- Alice and Bob are now yellow pixel-art astronaut chicks.
+- Main spritesheet rows 0 and 1 have been updated in columns 0–7.
+- Separate 4-direction strips are provided under assets/characters/.
+- The separate strips are organized as 8 frames across x 4 directions down;
+  each frame is 16x16. Review and select walk frames in-game before finalizing.

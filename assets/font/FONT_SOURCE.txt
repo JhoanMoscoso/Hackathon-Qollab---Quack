@@ -1,0 +1,2 @@
+Press Start 2P TTF not bundled: download from https://github.com/google/fonts/tree/main/ofl/pressstart2p
+Include the official OFL.txt from the same folder. License: SIL Open Font License 1.1.
