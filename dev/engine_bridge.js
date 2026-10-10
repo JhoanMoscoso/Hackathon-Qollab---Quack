@@ -30,3 +30,6 @@ export const advance_stage = make('advance_stage');
 export const snapshot = make('snapshot');
 export const load_audio = make('load_audio');
 export const run_circuit = make('run_circuit');
+export const send_bit = make('send_bit');
+export const receive_bit = make('receive_bit');
+export const confirm_identity = make('confirm_identity');

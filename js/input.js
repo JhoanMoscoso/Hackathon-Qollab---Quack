@@ -36,6 +36,7 @@ export function keyToIntent(code, mode, active) {
 
 // Keys whose default browser action (scroll, focus change) must be suppressed.
 const PREVENT = new Set(['Tab', 'Space', ...Object.keys(ARROWS)]);
+const NATIVE_KEY_TARGETS = new Set(['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA']);
 
 /**
  * @param {{ addEventListener: Function, removeEventListener: Function }} target usually window
@@ -48,6 +49,9 @@ export function createInput(target, { mode = '1p', repeatMs = 150, now = () => p
   const held = new Map(); // code -> time of next repeat
 
   function onKeyDown(e) {
+    const tagName = e.target?.tagName?.toUpperCase();
+    if (NATIVE_KEY_TARGETS.has(tagName) || e.target?.isContentEditable
+      || (e.code === 'Tab' && e.shiftKey && tagName === 'CANVAS')) return;
     const intent = keyToIntent(e.code, currentMode, active);
     if (intent || PREVENT.has(e.code)) e.preventDefault();
     if (!intent || e.repeat) return; // repeats are generated in poll()

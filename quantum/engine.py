@@ -116,6 +116,30 @@ class Engine:
                                 for name, obj in stage["objects"].items()
                                 if obj.get("type") == "validated_exit"},
             })
+        if "feed_forward" in stage:
+            phase = position.feed_forward_phase
+            sent = phase in {"receive_bit", "correct_alice", "measure_alice", "complete"}
+            received = phase in {"correct_alice", "measure_alice", "complete"}
+            allowed = []
+            for q, bit in enumerate(position.measured):
+                try:
+                    rules.check_measurement(stage, position, q)
+                except rules.RuleError:
+                    allowed.append(False)
+                else:
+                    allowed.append(bit is None)
+            unlocked = status == "ready"
+            snapshot.update({
+                "feed_forward": {"phase": phase, "sender": "bob", "receiver": "alice",
+                    "required_correction": ("x" if position.measured[1] == 0 else "i") if received else None},
+                "classical_channel": {"sender": "bob", "receiver": "alice", "sent": sent,
+                    "received": received, "value": position.measured[1] if received else None},
+                "measurement_allowed": allowed, "measurement_enabled": any(allowed),
+                "exits_unlocked": unlocked,
+                "door_states": {name: "open" if unlocked else "closed"
+                                for name, obj in stage["objects"].items()
+                                if obj.get("type") == "protocol_exit"},
+            })
         return snapshot
 
     def snapshot(self):
@@ -139,9 +163,7 @@ class Engine:
     def measure(self, qubit):
         try:
             self.require_session()
-            rules.check_qubit(qubit, len(self.position.measured))
-            if "validation" in self.stage and not self.position.circuit_validated:
-                raise rules.RuleError("CIRCUIT_NOT_VALIDATED", "Use RUN CIRCUIT successfully before measuring")
+            rules.check_measurement(self.stage, self.position, qubit)
             previous = self.position.measured[qubit]
             if previous is not None:
                 return encode({"qubit": qubit, "outcome": previous, "repeated": True,
@@ -169,6 +191,29 @@ class Engine:
             return encode(self._snapshot())
         except (rules.RuleError, TypeError, ValueError) as error:
             return encode(error_payload(error))
+
+    def _classical_action(self, name, actor):
+        try:
+            self.require_session()
+            position = getattr(rules, name)(self.stage, self.position, actor)
+            if position is not self.position:
+                self.position = position
+                event = (["identity", 0] if name == "confirm_identity"
+                         else [name, 1 if name == "send_bit" else 0, position.measured[1]])
+                self.history.append(event)
+                self.revision += 1
+            return encode(self._snapshot())
+        except (rules.RuleError, TypeError, ValueError) as error:
+            return encode(error_payload(error))
+
+    def send_bit(self, actor=None):
+        return self._classical_action("send_bit", actor)
+
+    def receive_bit(self, actor=None):
+        return self._classical_action("receive_bit", actor)
+
+    def confirm_identity(self, actor=None):
+        return self._classical_action("confirm_identity", actor)
 
     def reset_stage(self):
         try:
@@ -246,6 +291,18 @@ def measure(qubit):
 
 def run_circuit():
     return _engine.run_circuit()
+
+
+def send_bit(actor=None):
+    return _engine.send_bit(actor)
+
+
+def receive_bit(actor=None):
+    return _engine.receive_bit(actor)
+
+
+def confirm_identity(actor=None):
+    return _engine.confirm_identity(actor)
 
 
 def reset_level():

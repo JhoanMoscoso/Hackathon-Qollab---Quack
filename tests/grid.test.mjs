@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   CELL, COLS, ROWS, WALL_COLS, parseLevel, isWall, inBounds, cellKey,
 } from '../js/grid.js';
-import { view, gridOf } from './helpers.mjs';
+import { view, gridOf, loadLevel } from './helpers.mjs';
 
 const level = () => structuredClone(view(1));
 
@@ -27,7 +27,8 @@ test('parses level1 as 20x12 with [y][x] tiles', () => {
 });
 
 test('every real level and stage parses', () => {
-  for (const [n, stages] of [[1, 1], [2, 2], [3, 1]]) {
+  for (const n of [1, 2, 3]) {
+    const stages = loadLevel(n).stages.length;
     for (let i = 0; i < stages; i++) assert.doesNotThrow(() => gridOf(n, i), `level${n} stage ${i}`);
   }
 });
@@ -116,9 +117,10 @@ test('object cells are not walls', () => {
 
 test('plain terminals carry id, gate, owner, qubit and uses (null = unlimited)', () => {
   assert.deepEqual(gridOf(2, 0).terminals, [
-    { cell: [14, 1], id: 'bob_x_opposites', gate: 'x', owner: 'bob', qubit: 1, target: undefined, uses: 1 },
+    { cell: [2, 5], id: 'alice_x', gate: 'x', owner: 'alice', qubit: 0, target: undefined, uses: 1 },
+    { cell: [16, 5], id: 'bob_x', gate: 'x', owner: 'bob', qubit: 1, target: undefined, uses: 1 },
   ]);
-  assert.equal(gridOf(2, 1).terminals[0].uses, null);
+  assert.equal(gridOf(2, 0).terminals[0].uses, 1);
 });
 
 test('throws on a 22-wide map', () => {

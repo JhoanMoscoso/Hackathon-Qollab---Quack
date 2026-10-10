@@ -6,6 +6,8 @@ Dueño: Juanjo. Consumidor: Jhoan (`main.js`). Todo lo que se devuelve a JS es *
 
 **Revisión de L1 integrada y validada (2026-10-10):** `Calibration Chamber` parte de |00⟩ y exige H de Alice, CX de Bob y `run_circuit()` antes de medir. PR #5 fusionado; protocolo completo pasó en Qollab built-in/Forte, incluida apertura para 11 y reset. Snapshot inicial en `docs/snapshot-level1-example.json`; evidencia en handoff06 §9. Falta conectar UI/colisiones y realizar el walkthrough antes de declararse jugable.
 
+**L2 Bell Block (revisión 2026-10-10):** una etapa que re-prepara Φ⁺; Bob X(q1)→medir q1→SEND→Alice RECEIVE→X(q0) si m=0 / KEEP(I) explícito si m=1→medir q0=0. `docs/snapshot-example.json` refleja ese contrato actual, no el antiguo L2/opposites. Los controles se conectaron al frontend existente; falta validación Qollab/gameplay de la revisión.
+
 ## Conceptos que el equipo debe entender (en orden)
 
 1. **Qubit y base computacional.** Un qubit es un vector unitario `|ψ⟩ = α|0⟩ + β|1⟩`, `|α|² + |β|² = 1`. Medir en la base computacional da 0 con probabilidad `|α|²` y 1 con `|β|²`, y deja el qubit en el valor obtenido.
@@ -48,7 +50,7 @@ def apply_gate(gate: str, qubit: int, target: int = -1,
 # gate ∈ {"x","h","z","cx"}; para "cx" qubit=control, target=target.
 # Valida contra el gate set del nivel y el presupuesto. Devuelve snapshot (o {"error": "..."}).
 # Sin id explícito se resuelve un terminal compatible y se consumen sus usos igualmente.
-# L1 exige actor="alice"/"bob" explícito; llamadas legacy de L2/L3 conservan actor opcional.
+# L1 y Bell Block exigen actor="alice"/"bob" explícito; L3 conserva actor opcional.
 
 def run_circuit() -> str
 # En L1 valida orden H(0),CX(0,1) y estado Phi+ módulo fase global; no consume gates/jobs.
@@ -59,6 +61,17 @@ def measure(qubit: int) -> str
 # Saca un shot de counts[state_key] (o fallback), lee el bit, proyecta el estado.
 # Devuelve {"qubit": k, "outcome": 0|1, "snapshot": {...}}.
 # En L1, antes de RUN válido devuelve CIRCUIT_NOT_VALIDATED sin muestrear/mutar.
+# En L2 solo Bob puede medir tras su X; Alice solo tras RECEIVE + corrección correcta.
+
+def send_bit(actor=None) -> str
+# Actor bob; envía únicamente el resultado ya observado q1. No acepta un bit arbitrario.
+
+def receive_bit(actor=None) -> str
+# Actor alice, después de SEND. Copia el valor real del mensaje en classical_channel.
+
+def confirm_identity(actor=None) -> str
+# Actor alice; decisión KEEP/I explícita únicamente con bit recibido 1.
+# No aplica matriz nueva, no consume gate/terminal/job. Bit0 debe usar apply_gate X(q0).
 
 def reset_level() -> str
 # Vuelve al estado inicial, limpia historial. Devuelve snapshot.
@@ -106,12 +119,16 @@ def snapshot() -> str
 - `objective.status` = pending/ready/failed; `quantum_ready` exige win y `required_measurements` (ambos qubits en MVP). Victoria espacial se decide en JS. Errores conservan `error` y agregan `code` estable.
 - L1 añade `circuit_validation` (required/validated/status/target_bell/required_sequence), `measurement_enabled`, `exits_unlocked` y `door_states`. `objects[door_A]="0"` sigue siendo el valor cuántico: **no indica que la puerta esté abierta**. Arte/colisión del nuevo tipo `validated_exit` deben usar `door_states`.
 - En L1 `quantum_ready` exige prueba previa, ambas medidas explícitas y paridad igual. `circuit_validation.status="complete"` significa protocolo cuántico completo, no que los jugadores ya llegaron a salidas. Las gates quedan bloqueadas tras RUN hasta reset. `history` registra `["run_circuit"]` como evento de validación, no gate física del diagrama.
+- L2 añade `feed_forward.phase` y `required_correction`, `classical_channel` (sender/receiver/sent/received/value), `measurement_allowed` por qubit y `door_states`/`exits_unlocked`. Mensaje visible en la consola solo tras recibir; el debugger global sigue siendo una vista conjunta/clásica, no el estado local de Alice. Gates/SEND/RECEIVE/KEEP usan roles explícitos; orden equivocado → `PROTOCOL_ORDER`, corrección equivocada → `WRONG_CORRECTION` sin mutar ni gastar recursos.
+- La prueba de secuencia no equivale a violar la desigualdad de Bell. Alice podría inferir el resultado de Bob midiendo temprano en Ψ⁺ ideal, pero esa medición consumiría su qubit e impediría la corrección posterior: el protocolo la bloquea antes de muestrear.
 
 ## Formato de nivel (`levels/levelN.json`)
 
 **Ejemplo v1 histórico para contexto, no válido en el loader v2.** Los assets reales son `levels/level1.json`–`level3.json`: cabecera con `schema_version,id,title,num_qubits,stages`; cada etapa incluye `id`, `required_measurements`, `failure_policy`. `uses:null` significa reutilizable y limitado por max_gates. Terminales llevan id/qubit/target. CX compartida de L3 requiere target_cell; la CX de Bob en L1 usa activation=owner, control q0/target q1 y una celda en su sala, sin requerir ambas placas. No inferir operandos de CX a partir del owner.
 
 L1 declara `validation: {target_bell:"Phi+",required_sequence:[["h",0],["cx",0,1]]}` y dos `validated_exit` con `blocking:true,unlock_when:"objective_ready"`, sin `open_on`. Las puertas físicas abren para 00 **y** 11 tras preparación validada y ambas medidas; no usar la regla legacy de puerta verde=0 para ese tipo.
+
+L2 declara `feed_forward: {sender_qubit:1,receiver_qubit:0,preparation_gate:["x",1],corrections:{"0":"x","1":"i"},classical_channel:"explicit_send_receive"}`. Dos `protocol_exit` se abren con objetivo completo, no con el bit Bob: tanto 00 como 01 finales son válidos. Identidad y mensaje son eventos clásicos del historial, no gates físicas. Reset borra mensaje/decisión y re-prepara Φ⁺, sin reenviar al backend.
 
 ```json
 {

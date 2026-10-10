@@ -16,14 +16,17 @@ test('timing summary sorts a copy and reports nearest-rank percentiles', () => {
 test('bridge warms up, excludes setup and precomputes once', async () => {
   const calls = [];
   const snapshot = { objective: { quantum_ready: true }, source: 'backend',
-    sampling: { counts: { '00': 100, '11': 100 } }, last_measurement: { source: 'backend' } };
+    sampling: { counts: { '00': 100, '11': 100 } }, last_measurement: { source: 'backend' },
+    classical_channel: { value: 1 } };
   const result = (name, args) => {
     if (name === 'snapshot') return snapshot;
     if (name === 'precompute') return { backend_states: 10, source: 'mixed' };
     if (name === 'measure') return { outcome: args[0], snapshot };
+    if (name === 'receive_bit') return snapshot;
     return {};
   };
-  const engine = Object.fromEntries(['load_level', 'new_session', 'precompute', 'snapshot', 'apply_gate', 'measure', 'reset_stage']
+  const engine = Object.fromEntries(['load_level', 'new_session', 'precompute', 'snapshot', 'apply_gate', 'measure', 'reset_stage',
+    'send_bit', 'receive_bit', 'confirm_identity']
     .map((name) => [name, { callPromising: async (...args) => {
       calls.push({ name, args });
       return JSON.stringify(result(name, args));

@@ -14,7 +14,7 @@ def payload(value):
 @pytest.fixture
 def engine():
     result = Engine(seed=17)
-    assert "error" not in payload(result.new_session("level2"))
+    assert "error" not in payload(result.new_session("level3"))
     return result
 
 
@@ -43,9 +43,9 @@ def test_invalid_requests_are_atomic(engine, args, code):
 
 
 def test_terminal_owner_budget_and_exhaustion(engine):
-    # L2 has no Alice X terminal; a valid qubit alone does not authorize a gate.
+    # L3 has no Alice X terminal; a valid qubit alone does not authorize a gate.
     assert payload(engine.apply_gate("x", 0, actor="alice"))["code"] == "GATE_NOT_ALLOWED"
-    # L2's Bob terminal is reusable but actor ownership remains enforced.
+    # L2's Bob terminal requires its declared actor.
     l2 = Engine(seed=2)
     l2.new_session("level2")
     assert payload(l2.apply_gate("x", 1, actor="alice"))["code"] == "INVALID_ACTOR"
@@ -77,22 +77,25 @@ def test_auto_terminal_and_backward_apply_after_terminal_objective():
 def test_measured_is_idempotent_and_blocks_each_cx_operand():
     e = Engine(seed=4)
     e.new_session("level2")
-    first = payload(e.measure(0))
+    e.apply_gate("x", 1, actor="bob")
+    first = payload(e.measure(1))
     revision = first["snapshot"]["revision"]
-    repeated = payload(e.measure(0))
+    repeated = payload(e.measure(1))
     assert repeated["repeated"] is True
     assert repeated["outcome"] == first["outcome"]
     assert repeated["snapshot"]["revision"] == revision
 
-    # Force a known branch on feed-forward stage while preserving its entangled state.
-    e._restart(1)
+    # Force Bob=0 in Psi+: Alice is defined as 1 but not explicitly measured.
+    e.reset_stage()
+    e.apply_gate("x", 1, actor="bob")
     e.sampling.records.clear()
     from quantum.state import canonical_key
     e.sampling.records[canonical_key(e.position.sv)] = type("D", (), {
-        "counts": {"00": 50}, "source": "backend", "reason": None})()
-    assert payload(e.measure(0))["outcome"] == 0
-    # Correlated q1 is not explicitly measured, therefore the owned X remains legal.
-    assert "error" not in payload(e.apply_gate("x", 1, actor="bob"))
+        "counts": {"01": 50}, "source": "backend", "reason": None})()
+    assert payload(e.measure(1))["outcome"] == 0
+    e.send_bit("bob")
+    e.receive_bit("alice")
+    assert "error" not in payload(e.apply_gate("x", 0, actor="alice"))
     assert payload(e.apply_gate("cx", 0, 1))["code"] == "QUBIT_ALREADY_MEASURED"
 
 
@@ -105,7 +108,8 @@ def test_reset_stage_level_and_advance_guards():
     assert reset["stage_index"] == before["stage_index"]
     assert reset["revision"] > before["revision"]
     assert reset["measured"] == [None, None]
-    # Failed Bob=1 is terminal immediately and cannot advance.
+    assert payload(e.measure(1))["code"] == "PROTOCOL_ORDER"
+    e.apply_gate("x", 1, actor="bob")
     assert payload(e.measure(1))["outcome"] in (0, 1)
 
 

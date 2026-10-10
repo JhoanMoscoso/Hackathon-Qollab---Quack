@@ -69,6 +69,18 @@ def validate_level(level: dict) -> dict:
                     raise ValueError("Invalid validation gate sequence")
             if len(validation["required_sequence"]) > stage["max_gates"]:
                 raise ValueError("Validation sequence exceeds gate budget")
+        feed_forward = stage.get("feed_forward")
+        if feed_forward is not None:
+            if (not isinstance(feed_forward, dict) or validation is not None
+                    or type(feed_forward.get("sender_qubit")) is not int or feed_forward["sender_qubit"] != 1
+                    or type(feed_forward.get("receiver_qubit")) is not int or feed_forward["receiver_qubit"] != 0
+                    or feed_forward.get("preparation_gate") != ["x", 1]
+                    or feed_forward.get("corrections") != {"0": "x", "1": "i"}
+                    or feed_forward.get("classical_channel") != "explicit_send_receive"):
+                raise ValueError("Invalid Bell Block feed-forward protocol")
+            if (circuit != [["h", 0], ["cx", 0, 1]] or stage["max_gates"] < 2
+                    or gate_set != {"alice": ["x"], "bob": ["x"], "shared": []}):
+                raise ValueError("Bell Block needs a fresh Phi+ and both owned X operations")
         win = stage.get("win")
         if not isinstance(win, dict) or not win:
             raise ValueError("Missing win condition")
@@ -84,6 +96,8 @@ def validate_level(level: dict) -> dict:
         needed = {0, 1} if "parity" in win else {int(k[1:]) for k in win}
         if not needed.issubset(required):
             raise ValueError("Win qubits must be explicitly measured")
+        if feed_forward is not None and (win != {"q0": 0} or set(required) != {0, 1}):
+            raise ValueError("Bell Block measures both qubits and targets Alice=0, not Bob's bit")
         if stage.get("failure_policy") not in {"retry_stage", "death"}:
             raise ValueError("Invalid failure policy")
         grid = stage.get("map")
@@ -111,6 +125,11 @@ def validate_level(level: dict) -> dict:
                         or obj.get("unlock_when") != "objective_ready"
                         or obj.get("blocking") is not True or "open_on" in obj):
                     raise ValueError("Validated exits unlock through the objective, not a local bit")
+            elif obj.get("type") == "protocol_exit":
+                if (feed_forward is None or not integer(obj.get("qubit"), upper=2)
+                        or obj.get("unlock_when") != "objective_ready"
+                        or obj.get("blocking") is not True or "open_on" in obj):
+                    raise ValueError("Protocol exits unlock only after the complete feed-forward sequence")
             elif "qubit" in obj:
                 if not integer(obj["qubit"], upper=2) or not integer(obj.get("open_on"), upper=2):
                     raise ValueError("Invalid quantum object")
@@ -161,6 +180,11 @@ def validate_level(level: dict) -> dict:
                            and t.get("target", -1) == (op[2] if len(op) == 3 else -1)
                            for t in terminals):
                     raise ValueError("Validation gates need corresponding terminals")
+        if feed_forward is not None:
+            for owner, qubit in (("alice", 0), ("bob", 1)):
+                if not any(t["owner"] == owner and t["gate"] == "x" and t["qubit"] == qubit
+                           for t in terminals):
+                    raise ValueError("Bell Block requires an X terminal for each player")
         known_labels = {"wall", "floor", "region_separator", "alice_start", "bob_start",
                         "sensor_q0", "sensor_q1", "exit_A", "exit_B"}
         known_labels |= set(objects) | terminal_ids | {t + "_target" for t in terminal_ids}

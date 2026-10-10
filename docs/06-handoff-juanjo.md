@@ -111,7 +111,7 @@ Para cada etapa: búsqueda exhaustiva de secuencias y **políticas condicionadas
 - ¿probabilidad de victoria midiendo a ciegas sin gates? Nuevo L1: 0 porque la medición sin validación está bloqueada; no porque |00⟩ tenga resultados aleatorios. L2 etapas: 0.0/0.5; L3: 0.0.
 - lista de todas las soluciones mínimas (para el narrador y el README).
 
-Para precompute se deduplican vectores por `canonical_key`; nodos lógicos también consideran observaciones, recursos y ahora historial/prueba de validación. Φ⁺ preparado y Φ⁺ validado comparten vector, pero no acciones legales. E5/E6 local se ejecutó para las cuatro etapas actuales; ver §7 y §9. No sustituye walkthrough espacial.
+Para precompute se deduplican vectores; nodos lógicos también consideran recursos/observaciones, prueba RUN e historial L1 y fases del canal L2. Mismo vector no implica mismas acciones. E5/E6 local actualizado a tres etapas; §7 y §9–10. No sustituye walkthrough espacial.
 
 ### E7 — Rendimiento del puente JS↔Python (proyecto JS junto con Jhoan, H+4)
 Mide con `performance.now()` en JS el coste de `apply_gate` y `measure`. Objetivo < 20 ms. Si `Statevector` de 3 qubits tarda más, cachea por `state_key`.
@@ -130,9 +130,13 @@ Convención: `q0` = Alice, `q1` = Bob. Objetos: `open_on` = valor que lo deja pa
 - Medir ambos en Z produce idealmente 00/11. Solo después de ambas medidas coincidentes se abren las dos `validated_exit`, independientemente del valor local 0/1. Reset quita prueba/historial/observaciones y vuelve a cerrar.
 - UI usa `measurement_enabled`, `door_states` y `exits_unlocked`; llegar a ambas salidas sigue siendo requisito espacial. No usar `objects="0"` como equivalente de puerta abierta.
 
-### L2 — Bell Block (Prison). Gate set: Bob `["x"]`. Dos etapas.
-- Etapa 1 "Opposites": Φ⁺. Cada celda tiene dos puertas: `north(open_on 0)` y `south(open_on 1)`, ambas llevan al pasillo. Trampa: `win: {"parity": "different"}` — si los dos resultados coinciden, alarma (muerte). A ciegas: p = 0.0. Solución: `X(q1)` → Ψ⁺ → p = 1.0.
-- Etapa 2 "Feed-forward": Φ⁺ de nuevo. Alice: dos corredores (`north open_on 0`, `south open_on 1`), ambos válidos. Bob: una reja `gate_B(q1, open_on 0, lethal: true)` y una terminal `X` dentro de su celda, reutilizable. A ciegas: p = 0.5. Solución: Alice mide primero; si `measured[0] == 1` (y por tanto `q1` ya es 1), Bob aplica X y luego mide. p = 1.0. **Regla del motor:** `apply_gate` sobre un qubit ya medido debe estar prohibido (`error`), pero sobre un qubit *definido por correlación y no medido* debe estar permitido. Esa distinción es el nivel entero.
+### L2 — Bell Block. Una etapa de mensaje clásico y corrección condicional de Alice.
+- Re-preparar Φ⁺ al entrar: L1 terminó medido en 00/11, no deja un registro entrelazado para heredar.
+- Bob aplica X(q1)→Ψ⁺, después mide q1. m=0 deja 10; m=1 deja 01 (orden del juego).
+- Bob pulsa SEND BIT: envía el resultado real, no un bit elegido por el cliente. Alice pulsa RECEIVE BIT antes de corregir.
+- Si m=0, Alice aplica X(q0)→00. Si m=1, confirma KEEP/I (sin gate ni coste)→01. Después Alice mide0. Ganar requiere la secuencia completa, no paridad; Bob puede terminar0/1 y ambas puertas abren para00/01.
+- Dos gates máximas, un uso por terminal X. SEND/RECEIVE/KEEP son consola HUD accesible por botones y B/V/I, no entidades adicionales. L2 tiene diez entidades físicas.
+- Bob mide y destruye el entrelazamiento; Alice queda definida pero no observada, por eso puede corregir. Alice podría inferir Bob midiendo antes en Ψ⁺ ideal, pero consume el qubit y rompe el protocolo: medición prematura bloqueada. Debugger global = vista conjunta/clásica, no observación local de Alice ni prueba experimental de Bell.
 
 ### L3 — The Core. Gate set: Alice `["h","z"]`, Bob `["x"]`, shared `["cx"]`. `max_gates: 5`. Una etapa.
 - `initial_circuit = [["h",0],["cx",0,1]]` (Φ⁺). Alice: `bridge_A(q0, open_on 1, lethal: true)` (0 = cae). Bob: `laser_B(q1, open_on 0, lethal: true)` (1 = vaporizado). `win: {"q0": 1, "q1": 0}`.
@@ -214,7 +218,7 @@ En la segunda ejecución individual de Forte, 3/200 shots (1.5 %) quedaron fuera
 
 ## 7. Entrega implementada para Jhoan
 
-Rama: `feat/juanjo-quantum-engine`, actualizada con `origin/main` incluyendo assets/OGG de Fernanda y `07-level-design-constraints.md` de Jhoan (renombrado desde 08). La entrega de Juanjo agrega Python/niveles/docs; el frontend JS incorporado viene de Jhoan. Mapas MVP marcados `requires_js_walkthrough`; budgets L2 de una gate y representación L1 conjunta son decisiones explícitas, revisables en integración. L2/opposites y L3 tienen más de diez entidades físicas si se cuentan todas las placas/terminales/salidas: queda alinear ese presupuesto con Jhoan, sin ocultarlo ni quitar gates esenciales.
+Entrega inicial en `feat/juanjo-quantum-engine`, revisiones L1/L2 sobre main con UI real de Jhoan y assets/OGG de Fernanda. L1/L2 actuales tienen diez entidades físicas; HUD de comunicación no suma celdas. L3 conserva pendiente de presupuesto/walkthrough. Budgets y protocolos vigentes en §9–10, no usar los antiguos JSON de dos etapas L2.
 
 ### Archivos y API
 
@@ -223,8 +227,8 @@ Rama: `feat/juanjo-quantum-engine`, actualizada con `origin/main` incluyendo ass
 - `quantum/rules.py`: transiciones puras, medición explícita, gate budget y terminales. Reusado por gameplay, BFS y verificador.
 - `quantum/sampling.py`: counts empíricos, fuente efectiva, filtro de resultados imposibles, envío global único y fallback Qiskit. `precompute` comparte una tarea para llamadas concurrentes; no retry remoto.
 - `quantum/enumerate.py`, `quantum/verify.py`: catálogo BFS y verificación exacta de políticas adaptativas con DAG de soluciones mínimas bajo la métrica gates en peor rama, luego mediciones.
-- `levels/level1.json`–`level3.json`: cuatro etapas actuales (nuevo L1 una, L2 dos, L3 una), schema v2, mapas 20×12 y columnas centrales 9–10 bloqueadas. Coordenadas `[fila,columna]`. L1 usa CX de Bob; L3 compartida. Narración máximo dos líneas de cuarenta caracteres; ruido/glitch no introduce reset automático.
-- `docs/snapshot-example.json`: snapshot real de L2/opposites antes de precompute, no un resultado de backend inventado.
+- `levels/level1.json`–`level3.json`: tres etapas actuales, una por nivel; schema v2, mapas20×12/muro9–10, coordenadas `[fila,columna]`. L1 CXBob, L2 XBob/correcciónAlice, L3CXcompartida. Narración2líneas40caracteres; ruido/glitch no introduce reset automático.
+- `docs/snapshot-example.json`: snapshot real inicial de L2/Bell Block antes de precompute, testeado; no un resultado de backend inventado.
 - `quantum/tests/`: física, API, etapas, assets, sampling, errores/concurrencia y verificación. `requirements-dev.txt` y `pytest.ini` para entorno local.
 
 ### Integración mínima en el proyecto Python de Qollab
@@ -266,8 +270,7 @@ Entorno probado: Python 3.14.7, Qiskit 2.5.2, numpy 2.3.5. No son necesariamente
 | Etapa | Estados físicos | Nodos lógicos | P a ciegas | P óptima por intento | Gates mínimas, peor rama |
 |---|---|---|---|---|---|
 | L1 bell_preparation | 4 | 12 | 0 (medir bloqueado) | 1 | 2 + RUN obligatorio |
-| L2 opposites | 6 | 14 | 0 | 1 | 1 |
-| L2 feed-forward | 6 | 14 | 0.5 | 1 | 1 |
+| L2 bell_block | 5 | 12 | 0 (orden bloqueado) | 1 | 2 en rama0 / 1 en rama1 |
 | L3 core | 20 | 245 | 0 | 1 | 3 |
 
 Unión actual de campaña: **20 estados físicos** tras revisar L1 (la histórica tenía 21). L1 sin CX tiene éxito 0; el DAG incluye RUN entre gates y medidas. L3 sin CX sigue máximo 0.5 y mínimo determinista tres gates. Todas las recetas equivalentes/sin reset se probaron localmente; no sustituye Qollab del cambio ni walkthrough espacial.
@@ -355,8 +358,8 @@ Ambos reportes: `states:21`, `circuits:1`, `strategy:packed`, `submitted_states:
 
 1. Conservar proyectos/salidas; Juanjo ya confirmó clic/foco y movimiento del cuadrado en ambos.
 2. Adaptación Jhoan v2: etapa, coordenadas, terminal IDs y actor; L1 añade botón RUN, sensores bloqueados antes y colisiones por door_states. CX de Bob requiere control0/target1, no inferir qubit desde owner; L3 conserva ambas placas. Mantener objetivos/salidas/reset/advance.
-3. Nuevo L1 en Qollab Python ya pasó: probarlo ahora con interfaz real, luego recorrer las cuatro etapas para F2/F3. E7/F0 básico y la consola no sustituyen gameplay.
-4. Acordar presupuesto de entidades L2/opposites y L3, y regla propuesta de glitches. IBM noise model es prueba adicional pendiente antes de entrega final, no bloqueo de E7.
+3. L1 en Qollab Python pasó y Jhoan integró su UI en PR6; walkthrough pendiente. NuevoL2conHUD necesita su probe/recorrido. Luego tres etapas para F2/F3. E7/F0 básico no sustituyen gameplay.
+4. L2 nuevo cumple diez entidades; revisar presupuesto L3 y regla de glitches. IBM noise model queda pendiente antes de entrega final, no bloqueo de E7.
 5. Samuel recibe el borrador técnico actualizado de §7 con métricas E7 verificadas. Los entregables de código/snapshot/E1–E7 de Juanjo quedan registrados; integración espacial/juego completo sigue siendo trabajo conjunto.
 
 ## 9. Revisión L1 — preparación validada y desbloqueo físico
@@ -408,3 +411,39 @@ Solo se observó remotamente la rama 11 en estos reportes; la rama 00 ya tiene p
 Histograma de veinte bits = distribución conjunta del pack. Sin reportes de marginales/descarte por par, no calcular una tasa de ruido de esta ejecución a partir de la lista. La consola confirma el modelo de desbloqueo, **no colisión/animación/escape visual ni 1P/2P**.
 
 Paquete conservado para reproducibilidad: `/home/juanm/singularity-tmp/opencode/qollab-juanjo-l1-validation.zip` (catorce archivos, main/requirements en raíz). Prueba de consola completada; no repetir salvo regresión. **Próximo paso con Jhoan:** conectar RUN, actor/operandos de Bob, measurement_enabled y door_states, y verificar secuencia completa caminando al sensor/puertas/salidas. No usar el ZIP viejo ni asumir que Publish/merge incorpora esos controles al frontend.
+
+## 10. L2 Bell Block — envío, recepción y corrección verificables
+
+Revisión solicitada por Juanjo, 2026-10-10. Reemplaza opposites/feed_forward por una etapa; no heredar el estado colapsado de L1. El frontend v2 de Jhoan se incorporó desde main antes de esta entrega; la consola nueva se conecta a él, sin reconstruir el juego.
+
+| Fase | Acción permitida | Estado ideal del juego | Puertas |
+|---|---|---|---|
+| prepare_bob | Bob X(q1) | Φ⁺→Ψ⁺ | Cerradas |
+| measure_bob | Bob mide q1 | m=0→10 / m=1→01 | Cerradas |
+| send_bit | Bob SEND BIT | Sin gate nueva | Cerradas |
+| receive_bit | Alice RECEIVE BIT | Mensaje real m recibido | Cerradas |
+| correct_alice | X(q0) si0 / KEEP(I) si1 | 10→00 / 01→01 | Cerradas |
+| measure_alice | Alice mide q0 | Resultado0 en ambas ramas ideales | Se abren ambas al completar |
+| complete | Ambos jugadores a salidas | 00 o01 válidos | Abiertas |
+
+API: `send_bit("bob")`, `receive_bit("alice")`, `confirm_identity("alice")`; AliceX usa `apply_gate("x",0,-1,"alice_x","alice")`, BobX usa qubit1/terminalbob_x/actorbob. JSON en todas, sin nuevo job. No existe parámetro para falsificar el mensaje; el bit viene de la observación real de Bob. SEND/RECEIVE/I repetidos son idempotentes; reset borra canal/decisión/medidas y restaura recursos.
+
+Fases en identidad lógica: send/receive/I no cambian el vector, pero habilitan acciones distintas. `check_measurement` bloquea orden/qubit antes de muestrear. `WRONG_CORRECTION` rechaza X si recibió1 o I si recibió0, sin gasto ni mutación. Correlación define Alice pero no la marca observada, permitiendo su corrección antes de medir.
+
+Snapshot: `feed_forward.phase/required_correction`, `classical_channel.sent/received/value`, `measurement_allowed:[Alice,Bob]`. Consola muestra el bit al recibir. Debugger/snapshot conjunto puede revelar más información: no se pretende confidencialidad entre roles de un cliente ni imposibilidad de inferir Bob desde una medida propia. Entrega clásica explícita = requisito operacional/pedagógico. No demostrar entrelazamiento experimental solo con coincidencias/anticoincidencias.
+
+### Frontend y pruebas acotadas
+
+HUD: Bob SEND BIT, Alice RECEIVE BIT, Alice KEEP(I); atajos B/V/I. Misma cola y epochguard de gates, nunca llamadas por frame; botones re-habilitados al terminar busy. Botones conservan Enter/Space/Tab, Shift+Tab sale del canvas, Tab normal conserva cambio de jugador1P. Sensores usan permisos por qubit; quien espera encima se mide cuando se habilita. Canal/identidad no se dibujan como gates físicas.
+
+Verificador: éxito1, ciego0 (orden bloqueado), cinco estados/doce nodos, máximo dos gates y dos medidas. Catálogo global20 y mismo pack de diez familias; ningún modelo remoto nuevo. F2 del MD01 requiere recorrido desde menú con audio en Qollab, ambos backends; no aprobarlo por tests puros.
+
+Por preferencia del usuario: **solo tres casos nuevos de backend** (dos ramas/atajos) y **dos comprobaciones pequeñas de UI**; otras pruebas de etapas se adaptaron. No nuevos ensayos estadísticos. Validación final local se registra antes del PR; navegador/Qollab de la revisión sigue pendiente.
+
+Regresión local: **224 tests Python y 202 tests JS pasaron**, CLI verificador exit0. La mayoría son pruebas heredadas de main, no tests nuevos de esta entrega. Probe real con BasicSimulator pasó una rama m=1→KEEP→Alice0/estado01/puertasabiertas, con fuentesbackend y reset correcto. Las dos ramas están cubiertas por los pocos casos forzados locales; no afirmar ejecución remota de L2 todavía.
+
+Revisión breve corrigió acceso a sensor inexistente (jugadores en spawn/terminal), re-habilitación HUD al finalizar busy y teclado nativo de botones. No se amplió cobertura masiva; se extendió la comprobación pequeña ya existente. `requirements.txt` en raíz declara solo Qiskit/numpy para Qollab; pytest queda en dependencias de desarrollo.
+
+Probe: `dev/qollab-l2/main.py`/`requirements.txt` en raíz de proyecto Python aparte, con quantum/levels/audio. Un precompute; usa el bit recibido para elegir X/I; exige Alice0 y ambas puertas abiertas para00/01, después revisa reset. Esperar `L2 BELL BLOCK: OK (quantum protocol, not a spatial gameplay test)`. Sin llamadas backend después de precompute.
+
+El arnés `dev/qollab-bridge/probe.js` ahora mide BobX/Bobmedida y recorre el canal completo; `benchmark_case` lo identifica. E7 histórico de §8 era Alice medida del caso anterior: no atribuir esos tiempos a este escenario nuevo.

@@ -14,6 +14,7 @@ export function barData(probs) {
 }
 
 const MEASURE_NAMES = new Set(['m', 'measure']);
+const NON_CIRCUIT_ACTIONS = new Set(['send_bit', 'receive_bit', 'identity']);
 
 function toColumns(entries, extra = {}) {
   const cols = [];
@@ -21,6 +22,7 @@ function toColumns(entries, extra = {}) {
     if (!Array.isArray(entry) || entry.length === 0) continue;
     const [name, a, b] = entry;
     const key = String(name).toLowerCase();
+    if (NON_CIRCUIT_ACTIONS.has(key)) continue; // classical protocol history is not a quantum gate
     if (key === 'run' || key === 'run_circuit') cols.push({ kind: 'run', label: 'RUN', ...extra });
     else if (key === 'cx') cols.push({ kind: 'cx', label: 'CX', control: a, target: b, ...extra });
     else if (MEASURE_NAMES.has(key)) cols.push({ kind: 'm', label: 'M', qubit: a, outcome: b, ...extra });
