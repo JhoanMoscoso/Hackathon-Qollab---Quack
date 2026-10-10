@@ -28,6 +28,12 @@ test('2P: WASD/E are Alice, arrows/Enter are Bob, Tab is null', () => {
   assert.equal(keyToIntent('Tab', '2p', 'alice'), null);
 });
 
+test('Space is the run intent in 1P and 2P, independent of the active player', () => {
+  for (const mode of ['1p', '2p']) {
+    for (const active of ['alice', 'bob']) assert.deepEqual(keyToIntent('Space', mode, active), { type: 'run' }, `${mode}/${active}`);
+  }
+});
+
 test('unknown key -> null', () => {
   assert.equal(keyToIntent('KeyQ', '1p', 'alice'), null);
   assert.equal(keyToIntent('KeyQ', '2p', 'alice'), null);
@@ -101,6 +107,22 @@ test('interact is not repeated while held', () => {
   assert.deepEqual(input.poll(), [{ player: 'alice', type: 'interact' }]);
   clock.t = 1000;
   assert.deepEqual(input.poll(), []);
+});
+
+test('run fires once per press: held Space and OS auto-repeat do not repeat it', () => {
+  for (const mode of ['1p', '2p']) {
+    const { target, clock, input } = setup({ mode });
+    const space = key('Space');
+    target.fire('keydown', space);
+    assert.equal(space.prevented, true); // page must not scroll
+    assert.deepEqual(input.poll(), [{ type: 'run' }]);
+    target.fire('keydown', key('Space', { repeat: true }));
+    clock.t = 1000;
+    assert.deepEqual(input.poll(), []);
+    target.fire('keyup', key('Space'));
+    target.fire('keydown', key('Space'));
+    assert.deepEqual(input.poll(), [{ type: 'run' }]); // a new press fires again
+  }
 });
 
 test('Tab toggles active, still emits switch, and affects 1P moves', () => {

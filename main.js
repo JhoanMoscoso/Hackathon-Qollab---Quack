@@ -1,16 +1,19 @@
 // Bootstrap only: wires engine -> state machine -> input -> entities -> render/debugger.
 // IDENTICAL in dev and on Qollab ('quantum.engine' is the Python module there, an import map
-// to js/mock_engine.js in dev/index.html). Engine calls happen on events only, never per frame.
+// to dev/engine_bridge.js in dev/index.html). Engine calls happen on events only, never per frame.
 import * as engine from 'quantum.engine';
 import { createStateMachine, STATES } from './js/state.js';
 import { parseLevel } from './js/grid.js';
-import { createWorld, resetWorld, stepPlayer, interact, consumeTerminal, checkWin, hazardCheck } from './js/entities.js';
+import { stageView } from './js/level_adapter.js';
+import {
+  createWorld, resetWorld, stepPlayer, interact, consumeTerminal, syncTerminalUses, stageComplete, objectiveFailed, hazardCheck,
+} from './js/entities.js';
 import { createInput } from './js/input.js';
 import { createRenderer } from './js/render.js';
 import { createDebugger } from './js/debugger.js';
 import { loadSprites } from './js/sprite_loader.js';
 
-const LEVEL_ID = 'test';
+const LEVEL_ID = 'level1';
 const DEATH_MS = 1000;
 const $ = (id) => document.getElementById(id);
 const NOTES = {
@@ -49,7 +52,10 @@ async function call(name, ...args) {
     return null;
   }
 }
-const refresh = (note = null) => dbg.update(snap, { lastMeasure, note, error: lastError });
+const refresh = (note = null) => {
+  if (world && snap) syncTerminalUses(world, snap); // engine is the source of truth for terminal uses
+  dbg.update(snap, { lastMeasure, note, error: lastError });
+};
 
 function showMenuError(msg) {
   const el = $('menu-error');
@@ -91,6 +97,7 @@ async function startGame(chosen) {
     if (ep !== epoch) return;
     if (!s) { showMenuError(lastError); return; } // stay in the menu, visibly
     snap = s; lastMeasure = null;
+    grid = parseLevel(stageView(level, snap.stage_index ?? 0));
     world = createWorld(grid);
     newInput();
     sm.setState(STATES.LEVEL);
@@ -140,6 +147,12 @@ function die() {
 async function runIntent(intent, ep) {
   lastError = null; // a new action clears the previous engine error
   if (intent.type === 'switch') return refresh(`Controlling ${input.active === 'alice' ? 'Alice' : 'Bob'}.`);
+  if (intent.type === 'run') { // RUN CIRCUIT: the engine validates the prepared state; errors show in the debugger
+    const s = await call('run_circuit');
+    if (ep !== epoch) return;
+    if (s) { snap = s; refresh(s.objective?.validated ? 'Circuit validated. Both measure now.' : null); }
+    return;
+  }
   const events = intent.type === 'move'
     ? stepPlayer(world, intent.player, intent.dx, intent.dy, snap)
     : interact(world, intent.player, snap);
@@ -153,18 +166,19 @@ async function runIntent(intent, ep) {
       if (ep !== epoch) return; // Esc / restart while the call was in flight: drop the result
       if (r) { snap = r.snapshot; lastMeasure = { qubit: r.qubit, outcome: r.outcome }; }
     } else if (ev.type === 'gate') {
-      const s = await call('apply_gate', ev.gate, ev.qubit);
+      const s = await call('apply_gate', ev.gate, ev.qubit, ev.target, ev.terminalId, ev.actor);
       if (ep !== epoch) return;
       if (s) { snap = s; consumeTerminal(ev.terminal); }
     } else if (ev.type === 'cnot') {
-      const s = await call('apply_gate', 'cx', ev.control, ev.target);
+      const s = await call('apply_gate', ev.gate, ev.qubit, ev.target, ev.terminalId, ev.actor);
       if (ep !== epoch) return;
-      if (s) snap = s;
+      if (s) { snap = s; consumeTerminal(ev.terminal); }
     }
   }
+  if (objectiveFailed(snap)) note = 'Results differ. Press R to reset.'; // full failure policy flow: later batch
   if (events.length) refresh(note);
   if (hazardCheck(world, snap).length) return die();
-  if (checkWin(world, snap, level.win)) {
+  if (stageComplete(world, snap)) {
     sm.setState(STATES.WIN);
     refresh('Level complete. Press Enter to return to the menu.');
   }
@@ -221,6 +235,6 @@ $('click-to-play').addEventListener('click', (e) => {
   // Sprites decode in parallel with the engine; loadSprites never rejects, so a failure only means procedural art.
   [level] = await Promise.all([call('load_level', LEVEL_ID), loadSprites()]);
   if (!level) { $('load-status').textContent = `Error: ${lastError}`; return; }
-  try { grid = parseLevel(level); } catch (e) { $('load-status').textContent = `Error: ${e.message}`; return; }
+  try { grid = parseLevel(stageView(level, 0)); } catch (e) { $('load-status').textContent = `Error: ${e.message}`; return; }
   sm.setState(STATES.MENU);
 })();

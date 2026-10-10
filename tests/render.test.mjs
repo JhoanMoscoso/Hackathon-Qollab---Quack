@@ -1,10 +1,8 @@
 // Smoke tests for js/render.js with a stub 2D context (no browser). Run: node --test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { parseLevel } from '../js/grid.js';
-import { createWorld } from '../js/entities.js';
 import { createRenderer, drawSprite, COLORS, ON_ONE } from '../js/render.js';
+import { worldOf, l1snap, objSnap } from './helpers.mjs';
 
 function stubCtx() {
   const calls = [];
@@ -16,7 +14,8 @@ function stubCtx() {
 }
 const canvasWith = (ctx) => ({ getContext: () => ctx });
 
-const level = JSON.parse(readFileSync(new URL('../levels/test.json', import.meta.url), 'utf8'));
+// Real v2 levels via stageView: level 1 for doors/sensors/cx, level 3 for lethal doors and X/Z terminals.
+const l3snap = (a = '0', b = '0') => objSnap({ bridge_A: a, laser_B: b });
 const snap = (a, b) => ({ objects: { door_A: a, door_B: b }, measured: [null, 1] });
 const view = (extra = {}) => ({ mode: '1p', active: 'alice', overlay: null, ...extra });
 
@@ -41,7 +40,7 @@ test('renderer disables smoothing and draws every door state without throwing', 
   const ctx = stubCtx();
   const r = createRenderer(canvasWith(ctx), { reduceMotion: false });
   assert.equal(ctx.imageSmoothingEnabled, false);
-  const world = createWorld(parseLevel(level));
+  const world = worldOf(1);
   for (const [a, b] of [['0', '1'], ['super', '0'], ['1', 'super']]) {
     r.draw(world, snap(a, b), view(), 1234);
   }
@@ -49,7 +48,7 @@ test('renderer disables smoothing and draws every door state without throwing', 
 });
 
 test('overlays render text; reduceMotion freezes super stripes', () => {
-  const world = createWorld(parseLevel(level));
+  const world = worldOf(1);
   const lines = (reduce, t) => {
     const ctx = stubCtx();
     const r = createRenderer(canvasWith(ctx), { reduceMotion: reduce });
@@ -99,7 +98,7 @@ function alphaCtx() {
 }
 
 test('used terminal: base dimmed, label at full alpha, check mark drawn', () => {
-  const world = createWorld(parseLevel(level));
+  const world = worldOf(1);
   const draw = (used) => {
     world.terminals[0].usesLeft = used ? 0 : 1;
     const { ctx, log } = alphaCtx();
@@ -116,7 +115,7 @@ test('used terminal: base dimmed, label at full alpha, check mark drawn', () => 
 });
 
 test('measured sensor: label full alpha and check mark drawn', () => {
-  const world = createWorld(parseLevel(level));
+  const world = worldOf(1);
   const run = (measured) => {
     const { ctx, log } = alphaCtx();
     createRenderer(canvasWith(ctx)).draw(world, { objects: {}, measured }, view(), 0);
@@ -168,7 +167,7 @@ const lastAt = (calls, cx, cy, image = SHEET) => imagesAt(calls, cx, cy, image).
 
 test('sprites: tiles are drawn 32x32 on integer positions, floor under everything, smoothing off', () => withSprites(() => {
   const { ctx, calls } = recCtx();
-  const world = createWorld(parseLevel(level));
+  const world = worldOf(1);
   createRenderer(canvasWith(ctx)).draw(world, snap('0', '0'), view(), 0);
   assert.equal(ctx.imageSmoothingEnabled, false);
   const imgs = calls.filter((c) => c.name === 'drawImage');
@@ -187,7 +186,7 @@ test('sprites: tiles are drawn 32x32 on integer positions, floor under everythin
 }));
 
 test('sprites: door_A uses door_0 (open, dimmed), door_1 (closed, full) and door_super (full)', () => withSprites(() => {
-  const world = createWorld(parseLevel(level));
+  const world = worldOf(1);
   const doorAt = [world.doors[0].x, world.doors[0].y];
   const run = (state) => {
     const { ctx, calls } = recCtx();
@@ -206,7 +205,7 @@ test('sprites: door_A uses door_0 (open, dimmed), door_1 (closed, full) and door
 }));
 
 test('sprites: door value badge glyph is drawn at full alpha with a readable fill', () => withSprites(() => {
-  const world = createWorld(parseLevel(level));
+  const world = worldOf(1);
   const run = (state) => {
     const { ctx, calls } = recCtx();
     createRenderer(canvasWith(ctx)).draw(world, snap(state, '1'), view(), 0);
@@ -232,7 +231,7 @@ test('sprites: badge contrast on the zero and one fills is at least 4.5:1', () =
 });
 
 test('sprites: super stripes overlay animates at 4 fps and freezes with reduceMotion', () => withSprites(() => {
-  const world = createWorld(parseLevel(level));
+  const world = worldOf(1);
   const moves = (reduce, t) => {
     const { ctx, calls } = recCtx();
     createRenderer(canvasWith(ctx), { reduceMotion: reduce }).draw(world, snap('super', 'super'), view(), t);
@@ -242,15 +241,31 @@ test('sprites: super stripes overlay animates at 4 fps and freezes with reduceMo
   assert.notEqual(moves(false, 0), moves(false, 250));
 }));
 
-test('sprites: lethal door keeps its dashed hazard border', () => withSprites(() => {
-  const world = createWorld(parseLevel(level));
-  const { ctx, calls } = recCtx();
-  createRenderer(canvasWith(ctx)).draw(world, snap('0', '0'), view(), 0);
-  assert.ok(calls.some((c) => c.name === 'setLineDash' && c.args[0].length === 2));
+test('sprites: lethal door keeps its dashed hazard border; non-lethal joint locks have none', () => withSprites(() => {
+  const dashes = (world, s) => {
+    const { ctx, calls } = recCtx();
+    createRenderer(canvasWith(ctx)).draw(world, s, view({ mode: '2p' }), 0); // 2P: no dashed active ring
+    return calls.filter((c) => c.name === 'setLineDash' && c.args[0].length === 2).length;
+  };
+  assert.equal(dashes(worldOf(1), l1snap()), 0);
+  assert.equal(dashes(worldOf(3), l3snap()), 2); // bridge_A and laser_B
 }));
 
+test('level 1 and level 3 render with engine-shaped snapshots (joint locks, cx, sprites on and off)', () => {
+  for (const sprites of [false, true]) {
+    if (sprites) globalThis.SPRITES = { image: SHEET, frames: FRAMES };
+    try {
+      const { ctx } = recCtx();
+      const r = createRenderer(canvasWith(ctx));
+      r.draw(worldOf(1), l1snap(), view(), 0);
+      r.draw(worldOf(1), l1snap({ doors: '0', status: 'ready', measured: [0, 0], validated: true }), view(), 0);
+      r.draw(worldOf(3), l3snap('super', '1'), view(), 0);
+    } finally { delete globalThis.SPRITES; }
+  }
+});
+
 test('sprites: sensors use idle until measured, then the measured value', () => withSprites(() => {
-  const world = createWorld(parseLevel(level));
+  const world = worldOf(1);
   const [s0, s1] = world.sensors;
   const draw = (measured) => {
     const { ctx, calls } = recCtx();
@@ -268,12 +283,12 @@ test('sprites: sensors use idle until measured, then the measured value', () => 
 }));
 
 test('sprites: terminals pick the gate sprite; used ones are dimmed but keep a full-alpha check mark', () => withSprites(() => {
-  const world = createWorld(parseLevel(level));
-  const [h, x] = world.terminals;
+  const world = worldOf(3);
+  const [h, , x] = world.terminals; // alice_h, alice_z, bob_x
   const draw = (used) => {
     world.terminals[0].usesLeft = used ? 0 : 1;
     const { ctx, calls } = recCtx();
-    createRenderer(canvasWith(ctx)).draw(world, snap('0', '0'), view(), 0);
+    createRenderer(canvasWith(ctx)).draw(world, l3snap(), view(), 0);
     return calls;
   };
   const fresh = draw(false);
@@ -288,7 +303,7 @@ test('sprites: terminals pick the gate sprite; used ones are dimmed but keep a f
 }));
 
 test('sprites: cnot cells use control/target sprites and keep the cable', () => withSprites(() => {
-  const world = createWorld(parseLevel(level));
+  const world = worldOf(1);
   const { ctx, calls } = recCtx();
   createRenderer(canvasWith(ctx)).draw(world, snap('0', '0'), view(), 0);
   const [cx, cy] = world.cnot.control;
@@ -299,7 +314,7 @@ test('sprites: cnot cells use control/target sprites and keep the cable', () => 
 }));
 
 test('sprites: exits use the exit sprite plus a player letter (identity not by color alone)', () => withSprites(() => {
-  const world = createWorld(parseLevel(level));
+  const world = worldOf(1);
   const { ctx, calls } = recCtx();
   createRenderer(canvasWith(ctx)).draw(world, snap('0', '0'), view(), 0);
   for (const e of world.exits) {
@@ -311,7 +326,7 @@ test('sprites: exits use the exit sprite plus a player letter (identity not by c
 }));
 
 test('sprites: players use their own strip, face where they moved and walk-cycle at 8 fps', () => withSprites(() => {
-  const world = createWorld(parseLevel(level));
+  const world = worldOf(1);
   const { ctx, calls } = recCtx();
   const r = createRenderer(canvasWith(ctx));
   const a = world.players.alice;
@@ -334,7 +349,7 @@ test('sprites: players use their own strip, face where they moved and walk-cycle
 }));
 
 test('sprites: reduceMotion keeps the walk frame at 0', () => withSprites(() => {
-  const world = createWorld(parseLevel(level));
+  const world = worldOf(1);
   const { ctx, calls } = recCtx();
   const r = createRenderer(canvasWith(ctx), { reduceMotion: true });
   const a = world.players.alice;
@@ -349,7 +364,7 @@ test('sprites: reduceMotion keeps the walk frame at 0', () => withSprites(() => 
 }));
 
 test('sprites: players keep the A/B marker and the 1P active ring', () => withSprites(() => {
-  const world = createWorld(parseLevel(level));
+  const world = worldOf(1);
   const { ctx, calls } = recCtx();
   createRenderer(canvasWith(ctx)).draw(world, snap('0', '0'), view({ active: 'alice' }), 0);
   const a = world.players.alice;
@@ -360,7 +375,7 @@ test('sprites: players keep the A/B marker and the 1P active ring', () => withSp
 test('fallback: sheet without character strips still draws procedural players', () => {
   globalThis.SPRITES = { image: SHEET, frames: FRAMES };
   try {
-    const world = createWorld(parseLevel(level));
+    const world = worldOf(1);
     const { ctx, calls } = recCtx();
     createRenderer(canvasWith(ctx)).draw(world, snap('0', '0'), view(), 0);
     assert.ok(calls.some((c) => c.name === 'fillText' && c.args[0] === 'A'));
@@ -370,7 +385,7 @@ test('fallback: sheet without character strips still draws procedural players', 
 
 test('fallback: without SPRITES nothing calls drawImage and procedural shapes are drawn', () => {
   assert.equal(globalThis.SPRITES, undefined);
-  const world = createWorld(parseLevel(level));
+  const world = worldOf(1);
   const { ctx, calls } = recCtx();
   createRenderer(canvasWith(ctx)).draw(world, snap('super', '1'), view(), 0);
   assert.equal(calls.filter((c) => c.name === 'drawImage').length, 0);

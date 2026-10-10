@@ -4,18 +4,17 @@
 
 import { isWall, inBounds, WALL_COLS } from './grid.js';
 
-const EPS = 1e-9;
-
 export class Player {
   constructor(id, qubit, x, y) { this.id = id; this.qubit = qubit; this.x = x; this.y = y; }
 }
 
 export class Door {
-  constructor(name, x, y, qubit, openOn, lethal) {
-    Object.assign(this, { name, x, y, qubit, openOn, lethal });
+  /** `qubit` is undefined for joint locks (state still comes from snap.objects). `blocking:false` = indicator only. */
+  constructor(name, x, y, qubit, openOn, lethal, blocking = true) {
+    Object.assign(this, { name, x, y, qubit, openOn, lethal, blocking });
   }
   /** '0' | '1' | 'super', read from the snapshot. */
-  state(snap) { return snap.objects[this.name]; }
+  state(snap) { return snap.objects?.[this.name]; }
   isOpen(snap) { return this.state(snap) === String(this.openOn); }
 }
 
@@ -23,14 +22,20 @@ export class Sensor {
   constructor(qubit, x, y) { this.qubit = qubit; this.x = x; this.y = y; }
 }
 
+// `uses: null` (or undefined) = unlimited, kept locally as Infinity.
+const usesOf = (uses) => uses ?? Infinity;
+
 export class GateTerminal {
-  constructor(x, y, gate, owner, uses) {
-    Object.assign(this, { x, y, gate, owner, uses, usesLeft: uses });
+  constructor(x, y, gate, owner, uses, id) {
+    Object.assign(this, { x, y, gate, owner, uses: usesOf(uses), usesLeft: usesOf(uses), id });
   }
 }
 
 export class CnotTerminal {
-  constructor(control, target) { this.control = control; this.target = target; }
+  // The engine checks `actor` against the terminal owner, which is 'shared' for the CX (not the pressing player).
+  constructor(control, target, terminalId, uses, owner = 'shared') {
+    Object.assign(this, { control, target, terminalId, owner, uses: usesOf(uses), usesLeft: usesOf(uses) });
+  }
 }
 
 export class Exit {
@@ -43,10 +48,10 @@ export function createWorld(grid) {
   return {
     grid,
     players: { alice: new Player('alice', 0, ...alice), bob: new Player('bob', 1, ...bob) },
-    doors: grid.objects.map((o) => new Door(o.name, o.cell[0], o.cell[1], o.qubit, o.open_on, o.lethal)),
+    doors: grid.objects.map((o) => new Door(o.name, o.cell[0], o.cell[1], o.qubit, o.open_on, o.lethal, o.blocking)),
     sensors: grid.sensors.map((s) => new Sensor(s.qubit, s.cell[0], s.cell[1])),
-    terminals: grid.terminals.map((t) => new GateTerminal(t.cell[0], t.cell[1], t.gate, t.owner, t.uses)),
-    cnot: grid.cnot ? new CnotTerminal(grid.cnot.control, grid.cnot.target) : null,
+    terminals: grid.terminals.map((t) => new GateTerminal(t.cell[0], t.cell[1], t.gate, t.owner, t.uses, t.id)),
+    cnot: grid.cnot ? new CnotTerminal(grid.cnot.control, grid.cnot.target, grid.cnot.terminalId, grid.cnot.uses, grid.cnot.owner) : null,
     exits: ['alice', 'bob'].filter((id) => grid.exits[id]).map((id) => new Exit(id, ...grid.exits[id])),
   };
 }
@@ -57,7 +62,24 @@ export function resetWorld(world) {
   [world.players.alice.x, world.players.alice.y] = alice;
   [world.players.bob.x, world.players.bob.y] = bob;
   for (const t of world.terminals) t.usesLeft = t.uses;
+  if (world.cnot) world.cnot.usesLeft = world.cnot.uses;
 }
+
+/** Mirror the engine's terminal_uses_left onto the local counters (the renderer reads usesLeft). */
+export function syncTerminalUses(world, snap) {
+  const left = snap?.terminal_uses_left;
+  if (!left) return;
+  for (const t of [...world.terminals, ...(world.cnot ? [world.cnot] : [])]) {
+    const id = t.id ?? t.terminalId;
+    if (id in left) t.usesLeft = usesOf(left[id]);
+  }
+}
+
+// Engine is the source of truth for uses; the local counter is only a fallback.
+const usesLeftOf = (terminal, id, snap) => {
+  const left = snap?.terminal_uses_left;
+  return left && id != null && id in left ? usesOf(left[id]) : terminal.usesLeft;
+};
 
 const at = (list, x, y) => list.find((e) => e.x === x && e.y === y);
 const blocked = (reason) => [{ type: 'blocked', reason }];
@@ -70,7 +92,7 @@ function crossesRooms(playerId, x) {
 
 /**
  * Try to move a player by (dx, dy). Mutates the player only when the move is allowed.
- * Returns events: blocked | move | death | measure. Win is checked separately (checkWin).
+ * Returns events: blocked | move | death | measure. Completion is checked separately (stageComplete).
  */
 export function stepPlayer(world, playerId, dx, dy, snap) {
   const player = world.players[playerId];
@@ -83,7 +105,7 @@ export function stepPlayer(world, playerId, dx, dy, snap) {
 
   const door = at(world.doors, x, y);
   let dies = false;
-  if (door) {
+  if (door?.blocking) { // non-blocking doors are indicators: they never block and never kill
     if (door.state(snap) === 'super') return blocked('superposition');
     if (!door.isOpen(snap)) {
       if (!door.lethal) return blocked('closed');
@@ -115,14 +137,19 @@ export function interact(world, playerId, snap) {
   const terminal = at(world.terminals, player.x, player.y);
   if (terminal) {
     if (terminal.owner !== playerId) return [{ type: 'info', reason: 'wrong_owner' }];
-    if (terminal.usesLeft <= 0) return [{ type: 'info', reason: 'terminal_used' }];
-    return [{ type: 'gate', gate: terminal.gate, qubit: player.qubit, terminal }];
+    if (usesLeftOf(terminal, terminal.id, snap) <= 0) return [{ type: 'info', reason: 'terminal_used' }];
+    return [{
+      type: 'gate', gate: terminal.gate, qubit: player.qubit, target: -1, terminalId: terminal.id, actor: playerId, terminal,
+    }];
   }
 
   const { cnot } = world;
   if (cnot && (same(player, cnot.control) || same(player, cnot.target))) {
     if (same(world.players.alice, cnot.control) && same(world.players.bob, cnot.target)) {
-      return [{ type: 'cnot', control: 0, target: 1 }];
+      if (usesLeftOf(cnot, cnot.terminalId, snap) <= 0) return [{ type: 'info', reason: 'terminal_used' }];
+      return [{
+        type: 'cnot', gate: 'cx', qubit: 0, target: 1, terminalId: cnot.terminalId, actor: cnot.owner, terminal: cnot,
+      }];
     }
     return [{ type: 'info', reason: 'cnot_needs_both' }];
   }
@@ -134,18 +161,17 @@ export function consumeTerminal(terminal) {
   if (terminal.usesLeft > 0) terminal.usesLeft -= 1;
 }
 
-// Qubit N is definite at `bit` if it was measured as `bit`, or its marginal is certain.
-function qubitIs(snap, n, bit) {
-  if (snap.measured[n] === bit) return true;
-  return (snap.marginals?.[n]?.[bit] ?? 0) > 1 - EPS;
+/**
+ * The stage is complete when the engine says the objective is ready AND each player stands on
+ * their own exit. The engine decides the objective; entities never compute quantum state.
+ */
+export function stageComplete(world, snap) {
+  if (snap?.objective?.status !== 'ready' || world.exits.length < 2) return false;
+  return world.exits.every((e) => same(world.players[e.player], [e.x, e.y]));
 }
 
-/** win = level.win, e.g. {"q0":0,"q1":0}. */
-export function checkWin(world, snap, win) {
-  const onExit = world.exits.every((e) => same(world.players[e.player], [e.x, e.y]));
-  if (!onExit || world.exits.length < 2) return false;
-  return Object.entries(win).every(([key, bit]) => qubitIs(snap, Number(key.slice(1)), bit));
-}
+/** True when the engine reports the objective as failed (e.g. measurement outcomes differ). */
+export const objectiveFailed = (snap) => snap?.objective?.status === 'failed';
 
 /**
  * Death events for players standing on a lethal door that is now closed or in superposition.
@@ -155,7 +181,7 @@ export function hazardCheck(world, snap) {
   const events = [];
   for (const player of Object.values(world.players)) {
     const door = at(world.doors, player.x, player.y);
-    if (!door || !door.lethal || door.isOpen(snap)) continue;
+    if (!door || !door.blocking || !door.lethal || door.isOpen(snap)) continue;
     events.push({ type: 'death', cause: door.state(snap) === 'super' ? 'collapse' : door.name });
   }
   return events;

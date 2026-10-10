@@ -15,8 +15,9 @@ export function isWall(grid, x, y) {
 }
 
 /**
- * Parse a level JSON ({ map, legend, objects, terminals }) into a grid description.
- * Throws a clear Error if the map is malformed or spawns are missing.
+ * Parse a flat stage view ({ map, legend, objects, terminals }, see level_adapter.stageView)
+ * into a grid description. Terminal cells are already [x, y]. Throws a clear Error if the map
+ * is malformed or spawns are missing.
  */
 export function parseLevel(level) {
   const { map, legend = {}, objects: objectCfg = {}, terminals: terminalCfg = [] } = level;
@@ -55,13 +56,18 @@ export function parseLevel(level) {
       else if (name === 'bob_start') grid.spawns.bob = cell;
       else if (name === 'cnot_control') cnot.control = cell;
       else if (name === 'cnot_target') cnot.target = cell;
+      else if (/^shared_cx(_target)?$/.test(name)) { // legend value = terminal id (+ "_target" for the target cell)
+        cnot[name.endsWith('_target') ? 'target' : 'control'] = cell;
+        cnot.terminalId = name.replace(/_target$/, '');
+      }
       else if (name === 'cnot_control/target') cnotBoth.push(cell);
       else if (name === 'exit_A') grid.exits.alice = cell;
       else if (name === 'exit_B') grid.exits.bob = cell;
       else if (sensor) grid.sensors.push({ qubit: Number(sensor[1]), cell });
       else if (name in objectCfg) {
-        const { qubit, open_on, lethal } = objectCfg[name];
-        grid.objects.push({ name, cell, qubit, open_on, lethal: !!lethal });
+        const { qubit, open_on, lethal, blocking, type } = objectCfg[name];
+        // qubit is undefined for objective-bound joint locks; blocking:false = indicator only
+        grid.objects.push({ name, cell, qubit, open_on, lethal: !!lethal, blocking: blocking !== false, type });
       }
     }
   }
@@ -76,13 +82,23 @@ export function parseLevel(level) {
   }
   if (cnot.control && cnot.target) grid.cnot = cnot;
 
-  for (const t of terminalCfg) {
-    const [x, y] = t.cell;
-    // The map may omit a terminal legend char (spec-style levels): any in-bounds non-wall cell is fine.
-    if (isWall({ tiles }, x, y)) {
-      throw new Error(`Level "${id}": terminal at [${x},${y}] is out of bounds or on a wall`);
+  // The map may omit a terminal legend char (spec-style levels): any in-bounds non-wall cell is fine.
+  const checkCell = (cell) => {
+    if (!Array.isArray(cell) || isWall({ tiles }, cell[0], cell[1])) {
+      throw new Error(`Level "${id}": terminal at [${cell}] is out of bounds or on a wall`);
     }
-    grid.terminals.push({ cell: [x, y], gate: t.gate, owner: t.owner, uses: t.uses });
+    return [cell[0], cell[1]];
+  };
+  for (const t of terminalCfg) {
+    if (t.gate === 'cx' && t.target_cell) { // shared CX: control cell + target cell, never a plain gate terminal
+      grid.cnot = {
+        control: checkCell(t.cell), target: checkCell(t.target_cell), terminalId: t.id, owner: t.owner, uses: t.uses,
+      };
+      continue;
+    }
+    grid.terminals.push({
+      cell: checkCell(t.cell), id: t.id, gate: t.gate, owner: t.owner, qubit: t.qubit, uses: t.uses,
+    });
   }
 
   return grid;
