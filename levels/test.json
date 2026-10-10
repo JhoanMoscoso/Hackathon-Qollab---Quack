@@ -1,0 +1,50 @@
+{
+  "id": "test",
+  "title": "Test Chamber",
+  "initial_circuit": [["h", 0], ["cx", 0, 1]],
+  "gate_set": {"alice": ["h", "z"], "bob": ["x"], "shared": ["cx"]},
+  "max_gates": 6,
+  "win": {"q0": 0, "q1": 0},
+  "map": [
+    "####################",
+    "#........##........#",
+    "#.A......##......B.#",
+    "#........##........#",
+    "#..S.....##..s.....#",
+    "#.H......Cc.....X..#",
+    "#........##........#",
+    "#........##........#",
+    "#D#......##......#d#",
+    "#E#......##......#e#",
+    "#.#......##......#.#",
+    "####################"
+  ],
+  "legend": {
+    "A": "alice_start",
+    "B": "bob_start",
+    "H": "terminal_h_alice",
+    "X": "terminal_x_bob",
+    "C": "cnot_control",
+    "c": "cnot_target",
+    "S": "sensor_q0",
+    "s": "sensor_q1",
+    "D": "door_A",
+    "d": "door_B",
+    "E": "exit_A",
+    "e": "exit_B"
+  },
+  "objects": {
+    "door_A": {"qubit": 0, "open_on": 0, "lethal": false},
+    "door_B": {"qubit": 1, "open_on": 0, "lethal": true}
+  },
+  "terminals": [
+    {"cell": [2, 5], "gate": "h", "owner": "alice", "uses": 1},
+    {"cell": [16, 5], "gate": "x", "owner": "bob", "uses": 1}
+  ],
+  "narration": {
+    "enter": "Two rooms, one shared state. Placeholder text.",
+    "first_measure": "You measured. The other side now knows. Placeholder text.",
+    "death": "That door was not open. Try again. Placeholder text.",
+    "win": "Both exits reached. Placeholder text."
+  }
+}

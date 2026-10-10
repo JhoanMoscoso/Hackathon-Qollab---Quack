@@ -60,7 +60,7 @@ async def main(*_args):
     for i in range(3): print(i, res.get_counts(i))
     print(str(backend))
 ```
-Anota: ¿acepta lista? ¿`get_counts(i)` funciona? ¿Cuánto tarda en IonQ con 3, 30 y 60 circuitos a 200 shots? Solo probar 30/60 después de validar 3; cada tamaño en un Run independiente. **Si la lista no funciona, no enviar una segunda vez:** el escape individual + fallback fue validado; la entrega actual implementa además el pack de pares en un circuito pedido por Jhoan en `08-level-design-constraints.md` (ver §7). No generalizar un fallo de Aria a Forte ni confirmar batch a partir de un circuito individual.
+Anota: ¿acepta lista? ¿`get_counts(i)` funciona? ¿Cuánto tarda en IonQ con 3, 30 y 60 circuitos a 200 shots? Solo probar 30/60 después de validar 3; cada tamaño en un Run independiente. **Si la lista no funciona, no enviar una segunda vez:** el escape individual + fallback fue validado; la entrega actual implementa además el pack de pares en un circuito pedido por Jhoan en `07-level-design-constraints.md` (ver §7). No generalizar un fallo de Aria a Forte ni confirmar batch a partir de un circuito individual.
 
 Para diagnosticar **un circuito individual**, reemplaza el bloque desde `job = ...` hasta la última impresión por:
 ```python
@@ -206,7 +206,7 @@ En la segunda ejecución individual de Forte, 3/200 shots (1.5 %) quedaron fuera
 
 ## 7. Entrega implementada para Jhoan
 
-Rama: `feat/juanjo-quantum-engine`, actualizada con `origin/main` incluyendo assets/OGG de Fernanda y `08-level-design-constraints.md` de Jhoan. Este commit entrega Python/niveles/docs; no implementa el esqueleto JS ni modifica los assets de Fernanda. Mapas MVP marcados `requires_js_walkthrough`; budgets L2 de una gate y representación L1 conjunta son decisiones explícitas, revisables en integración. L2/opposites y L3 tienen más de diez entidades físicas si se cuentan todas las placas/terminales/salidas: queda alinear ese presupuesto con Jhoan, sin ocultarlo ni quitar gates esenciales.
+Rama: `feat/juanjo-quantum-engine`, actualizada con `origin/main` incluyendo assets/OGG de Fernanda y `07-level-design-constraints.md` de Jhoan (renombrado desde 08). La entrega de Juanjo agrega Python/niveles/docs; el frontend JS incorporado viene de Jhoan. Mapas MVP marcados `requires_js_walkthrough`; budgets L2 de una gate y representación L1 conjunta son decisiones explícitas, revisables en integración. L2/opposites y L3 tienen más de diez entidades físicas si se cuentan todas las placas/terminales/salidas: queda alinear ese presupuesto con Jhoan, sin ocultarlo ni quitar gates esenciales.
 
 ### Archivos y API
 
@@ -276,3 +276,9 @@ Validación final de entrega local: **111 tests pasaron**, sin skips; CLI `quant
 2. En proyecto JS, validar `callPromising`, stage/reset, cola de acciones, terminales/CX, salidas y recorrido de los mapas. Esto cierra el trabajo F0/F1 según exit gates del MD 01.
 3. E7: medir puente JS↔Python; no hay aún benchmark <20 ms ni garantía 60 fps.
 4. Probar un IBM noise model si disponible y revisar cómo se presenta mezcla/fallback/filtrado. El modo por defecto es conservador para cualquier backend; batch es opt-in solo en los compatibles.
+
+### Integración de main — conflictos Git versus contrato de gameplay
+
+Se incorporó el frontend de Jhoan desde `main` y se combinó `.gitignore` sin quitar reglas de ninguno. **Resolver ese conflicto no significa completar el puente real**: el bootstrap JS actual usa `LEVEL_ID='test'` y el mock/v1, mientras esta fachada admite `level1`–`level3` v2. El parser JS usa `[columna,fila]`; los terminales v2 usan `[fila,columna]`. La adaptación debe seleccionar `stages[stage_index]`, convertir coordenadas y respetar objetivo conjunto/indicadores no bloqueantes, terminal CX y avance/reset. Mantener el dev/mock funcional mientras se realiza ese trabajo; no cambiar `LEVEL_ID` a ciegas ni afirmar F0/F1 cerrado porque las suites aisladas pasan.
+
+Después de resolver el merge pasaron **111 tests Python y 124 tests JS**, sin fallos ni skips. Esto confirma que se preservan ambos componentes por separado, no una ejecución integrada del frontend con el backend Python en Qollab.
