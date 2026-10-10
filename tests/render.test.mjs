@@ -210,11 +210,12 @@ test('sprites: every cell gets a floor tile first, tiles are 32x32 on integers, 
     assert.ok(Number.isInteger(c.args[5]) && Number.isInteger(c.args[6]));
   }
   const floors = new Set(Object.keys(THEMES.lab.tiles).filter((n) => n.startsWith('floor_')).map((n) => tile(n).join()));
-  for (let y = 1; y < 11; y++) assert.ok(floors.has(srcOf(imagesAt(calls, 3, y)[0]).join()), `cell 3,${y} starts with a floor tile`);
+  for (let y = 1; y < 8; y++) assert.ok(floors.has(srcOf(imagesAt(calls, 3, y)[0]).join()), `cell 3,${y} starts with a floor tile`);
 }));
 
 test('sprites: wall faces come from the sheet, wall tops are a flat fill of the theme cap colour, the divider uses its own tiles', () => withSprites(() => {
-  const world = worldOf(1); // 20x12: top row has floor below, outer columns have wall below
+  const world = worldOf(1); // top row has floor below, outer columns have wall below
+  world.grid.decorations = []; // bare walls: the tile at a cell is the wall itself, not a wall-mounted prop
   const { ctx, calls } = recCtx();
   createRenderer(canvasWith(ctx)).draw(world, l1snap(), view(), 0);
   const faceNames = ['wall_face_a', 'wall_face_b', 'wall_face_c', 'wall_face_pipe', 'wall_face_sign', 'wall_face_window'];
@@ -327,7 +328,7 @@ test('sprites: terminals pick the gate console; Bob\'s CX is the owner console; 
 
 test('sprites: cnot cells use control/target consoles and keep the cable when adjacent, CX labels when far', () => withSprites(() => {
   const v = structuredClone(levelView(3));
-  v.terminals.find((t) => t.target_cell).target_cell = [5, 3];
+  v.terminals.find((t) => t.target_cell).target_cell = [5, 5];
   const near = createWorld(parseLevel(v));
   const calls = drawn(near, l3snap());
   const [cx, cy] = near.cnot.control;
@@ -451,6 +452,12 @@ test('level 1 and level 3 render with engine-shaped snapshots (joint locks, cx, 
 });
 
 // ---------- decorations (theme props) ----------
+// A 20x12 map (the engine maximum): two-column divider.
+const wideWorld = () => createWorld(parseLevel({
+  id: 'wide',
+  map: ['#'.repeat(20), '#A' + '.'.repeat(7) + '##' + '.'.repeat(7) + 'B#', ...Array.from({ length: 9 }, () => '#' + '.'.repeat(8) + '##' + '.'.repeat(8) + '#'), '#'.repeat(20)],
+  legend: { '#': 'wall', '.': 'floor', A: 'alice_start', B: 'bob_start' },
+}));
 const decoWorld = (decorations, theme = 'lab') => createWorld(parseLevel(smallView({ theme, decorations })));
 const S0 = { objects: {}, measured: [null, null] };
 
@@ -539,7 +546,7 @@ test('variable map size: a 15x9 level is 480x288 logical px, the canvas follows 
   assert.deepEqual([canvas.width, canvas.height], [960, 576]);
   assert.ok(ctx.calls.some((c) => c[0] === 'clearRect' && c[3] === 480 && c[4] === 288));
   assert.ok(ctx.calls.some((c) => c[0] === 'fillText' && c[1] === 'Level complete' && c[2] === 240 && c[3] === 144 - 14));
-  r.draw(jointWorld(), snap('0', '0'), view(), 0); // back to a 20x12 map
+  r.draw(wideWorld(), S0, view(), 0); // a 20x12 map again
   assert.deepEqual([canvas.width, canvas.height], [1280, 768]);
 });
 
@@ -551,21 +558,25 @@ test('variable map size: the divider (single column on odd widths) is drawn on e
 });
 
 
-test('renderer draws through setTransform(scale) so drawing keeps logical 640x384 coordinates', () => {
+test('renderer draws through setTransform(scale) so drawing keeps logical coordinates (cells x 32)', () => {
   const ctx = stubCtx();
   const canvas = { getContext: () => ctx, width: 640, height: 384 };
   const r = createRenderer(canvas);
-  r.draw(jointWorld(), snap('0', '0'), view(), 0);
+  r.draw(wideWorld(), S0, view(), 0);
   assert.deepEqual(ctx.calls.find((c) => c[0] === 'setTransform'), ['setTransform', 1, 0, 0, 1, 0, 0]);
-  assert.equal(canvas.width, 640);
+  assert.deepEqual([canvas.width, canvas.height], [640, 384]);
   ctx.calls.length = 0;
   r.setScale(3);
   assert.equal(canvas.width, 1920);
   assert.equal(canvas.height, 1152);
   assert.equal(ctx.imageSmoothingEnabled, false); // resizing resets context state: it is switched off again
-  r.draw(jointWorld(), snap('0', '0'), view(), 0);
+  r.draw(wideWorld(), S0, view(), 0);
   assert.deepEqual(ctx.calls.find((c) => c[0] === 'setTransform'), ['setTransform', 3, 0, 0, 3, 0, 0]);
   assert.ok(ctx.calls.some((c) => c[0] === 'clearRect' && c[3] === 640 && c[4] === 384)); // still logical units
+  ctx.calls.length = 0;
+  r.draw(jointWorld(), snap('0', '0'), view(), 0); // level 1 is 15x9: 480x288 logical, x3 backing
+  assert.deepEqual([canvas.width, canvas.height], [1440, 864]);
+  assert.ok(ctx.calls.some((c) => c[0] === 'clearRect' && c[3] === 480 && c[4] === 288));
 });
 
 test('renderer.setScale ignores an unchanged scale (resizing a canvas clears it)', () => {

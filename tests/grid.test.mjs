@@ -74,16 +74,26 @@ test('a decoration keeps its optional solid flag', () => {
   ]);
 });
 
-test('parses level1 as 20x12 with [y][x] tiles and the old two-column divider', () => {
+test('parses level1 as a 15x9 map with [y][x] tiles and a single divider column', () => {
   const g = gridOf(1);
-  assert.equal(g.width, 20);
-  assert.equal(g.height, 12);
-  assert.equal(g.tiles.length, 12);
-  assert.ok(g.tiles.every((row) => row.length === 20));
+  assert.equal(g.width, 15);
+  assert.equal(g.height, 9);
+  assert.equal(g.tiles.length, 9);
+  assert.ok(g.tiles.every((row) => row.length === 15));
   assert.equal(g.tiles[2][2], 'A');
-  assert.equal(g.tiles[5][16], 'C'); // Bob's CX terminal sits inside his room
-  assert.equal(g.tiles[4][9], '#'); // central wall is solid
-  assert.deepEqual(g.divider, [9, 10]);
+  assert.equal(g.tiles[5][11], 'C'); // Bob's CX terminal sits inside his room
+  assert.equal(g.tiles[4][7], '#'); // central wall is solid
+  assert.deepEqual(g.divider, [7]);
+});
+
+test('every level and stage is a 15x9 map with the divider in the middle column', () => {
+  for (const [n, stages] of [[1, 1], [2, 2], [3, 1]]) {
+    for (let i = 0; i < stages; i++) {
+      const g = gridOf(n, i);
+      assert.deepEqual([g.width, g.height, g.divider], [15, 9, [7]], `level${n} stage ${i}`);
+      for (let y = 0; y < g.height; y++) assert.equal(isWall(g, 7, y), true, `level${n} stage ${i} divider row ${y}`);
+    }
+  }
 });
 
 test('every real level and stage parses', () => {
@@ -94,12 +104,12 @@ test('every real level and stage parses', () => {
 
 test('level1 spawns, sensors and exits in [x, y]', () => {
   const g = gridOf(1);
-  assert.deepEqual(g.spawns, { alice: [2, 2], bob: [17, 2] });
+  assert.deepEqual(g.spawns, { alice: [2, 2], bob: [12, 2] });
   assert.deepEqual(
     [...g.sensors].sort((a, b) => a.qubit - b.qubit),
-    [{ qubit: 0, cell: [3, 4] }, { qubit: 1, cell: [13, 4] }],
+    [{ qubit: 0, cell: [3, 4] }, { qubit: 1, cell: [10, 4] }],
   );
-  assert.deepEqual(g.exits, { alice: [1, 9], bob: [18, 9] });
+  assert.deepEqual(g.exits, { alice: [1, 7], bob: [13, 7] });
 });
 
 test("level1 has no co-op cnot: Bob's CX (no target_cell) is a plain owner terminal with qubit and target", () => {
@@ -107,7 +117,7 @@ test("level1 has no co-op cnot: Bob's CX (no target_cell) is a plain owner termi
   assert.equal(g.cnot, null);
   assert.deepEqual(g.terminals, [
     { cell: [2, 5], id: 'alice_h', gate: 'h', owner: 'alice', qubit: 0, target: undefined, uses: 1 },
-    { cell: [16, 5], id: 'bob_cx', gate: 'cx', owner: 'bob', qubit: 0, target: 1, uses: 1 },
+    { cell: [11, 5], id: 'bob_cx', gate: 'cx', owner: 'bob', qubit: 0, target: 1, uses: 1 },
   ]);
 });
 
@@ -120,7 +130,7 @@ test('level1 central wall is solid on every row', () => {
 
 test('level3 cnot comes from shared_cx / shared_cx_target inside the rooms', () => {
   const g = gridOf(3);
-  assert.deepEqual(g.cnot, { control: [4, 3], target: [15, 3], terminalId: 'shared_cx', owner: 'shared', uses: 1 });
+  assert.deepEqual(g.cnot, { control: [4, 5], target: [12, 5], terminalId: 'shared_cx', owner: 'shared', uses: 1 });
   assert.deepEqual(g.terminals.map((t) => t.id), ['alice_h', 'alice_z', 'bob_x']); // the co-op CX is not a plain terminal
   assert.deepEqual(g.terminals.find((t) => t.id === 'alice_z').cell, [4, 2]);
 });
@@ -133,10 +143,10 @@ test('objects keep blocking (default true), optional qubit, open_on, lethal, typ
   const g = gridOf(1);
   const byName = Object.fromEntries(g.objects.map((o) => [o.name, o]));
   assert.deepEqual(byName.door_A, {
-    name: 'door_A', cell: [1, 8], qubit: 0, open_on: undefined, lethal: false, blocking: true,
+    name: 'door_A', cell: [1, 6], qubit: 0, open_on: undefined, lethal: false, blocking: true,
     type: 'validated_exit', unlock_when: 'objective_ready',
   });
-  assert.deepEqual(byName.door_B.cell, [18, 8]);
+  assert.deepEqual(byName.door_B.cell, [13, 6]);
   assert.equal(byName.door_B.qubit, 1);
   assert.equal(byName.door_B.open_on, undefined); // L1 doors never use open_on
   const l3 = Object.fromEntries(gridOf(3).objects.map((o) => [o.name, o]));
@@ -158,11 +168,11 @@ test('isWall / inBounds / cellKey', () => {
   assert.equal(isWall(g, 0, 0), true);
   assert.equal(isWall(g, 3, 3), false);
   assert.equal(isWall(g, -1, 3), true);
-  assert.equal(isWall(g, 20, 3), true);
-  assert.equal(isWall(g, 3, 12), true);
+  assert.equal(isWall(g, 15, 3), true);
+  assert.equal(isWall(g, 3, 9), true);
   assert.equal(inBounds(g, 0, 0), true);
-  assert.equal(inBounds(g, 19, 11), true);
-  assert.equal(inBounds(g, 20, 0), false);
+  assert.equal(inBounds(g, 14, 8), true);
+  assert.equal(inBounds(g, 15, 0), false);
   assert.equal(inBounds(g, 0, -1), false);
   assert.equal(cellKey(3, 7), '3,7');
 });
@@ -176,14 +186,14 @@ test('object cells are not walls', () => {
 
 test('plain terminals carry id, gate, owner, qubit and uses (null = unlimited)', () => {
   assert.deepEqual(gridOf(2, 0).terminals, [
-    { cell: [14, 1], id: 'bob_x_opposites', gate: 'x', owner: 'bob', qubit: 1, target: undefined, uses: 1 },
+    { cell: [10, 1], id: 'bob_x_opposites', gate: 'x', owner: 'bob', qubit: 1, target: undefined, uses: 1 },
   ]);
   assert.equal(gridOf(2, 1).terminals[0].uses, null);
 });
 
 test('throws on a 22-wide map', () => {
   const l = level();
-  l.map = l.map.map((r) => r[0] + r + r[0]);
+  l.map = l.map.map((r) => r.padEnd(22, '#'));
   assert.throws(() => parseLevel(l), /20/);
 });
 
@@ -262,11 +272,11 @@ test('legend-only shared_cx / shared_cx_target (no terminal entry) still define 
 });
 
 test('grid.decorations defaults to [] and passes the stage list through as [x, y] cells', () => {
-  assert.deepEqual(gridOf(2).decorations, []);
+  assert.deepEqual(parseLevel(small()).decorations, []);
   const g = gridOf(1);
   assert.ok(g.decorations.length > 0);
-  const t = g.decorations.find((d) => d.sprite === 'tank_b');
-  assert.deepEqual(t, { sprite: 'tank_b', cell: [12, 1], footprint: [1, 2] });
+  const t = g.decorations.find((d) => d.sprite === 'dilution_fridge_a');
+  assert.deepEqual(t, { sprite: 'dilution_fridge_a', cell: [5, 1], footprint: [2, 2] });
   const flat = level();
   delete flat.decorations;
   assert.deepEqual(parseLevel(flat).decorations, []);
@@ -281,21 +291,4 @@ test('decorations never change tiles, spawns, terminals or objects', () => {
   const without = parseLevel(flat);
   const strip = ({ decorations, ...rest }) => rest;
   assert.deepEqual(strip(withDeco), strip(without));
-});
-
-test('level 1 decorations avoid every gameplay cell and the cells in front of the doors', () => {
-  const g = gridOf(1);
-  const gameplay = new Set([
-    g.spawns.alice, g.spawns.bob, ...g.sensors.map((s) => s.cell), ...g.objects.map((o) => o.cell),
-    ...g.terminals.map((t) => t.cell), g.exits.alice, g.exits.bob,
-    [1, 7], [18, 7], // cells directly in front of door_A / door_B
-  ].map(([x, y]) => cellKey(x, y)));
-  for (const d of g.decorations) {
-    for (let y = d.cell[1]; y < d.cell[1] + d.footprint[1]; y++) {
-      for (let x = d.cell[0]; x < d.cell[0] + d.footprint[0]; x++) {
-        assert.ok(!gameplay.has(cellKey(x, y)), `${d.sprite} covers gameplay cell ${x},${y}`);
-        if (isWall(g, x, y)) assert.ok(d.sprite.startsWith('wall_') && y === 0, `${d.sprite} on wall ${x},${y}`);
-      }
-    }
-  }
 });

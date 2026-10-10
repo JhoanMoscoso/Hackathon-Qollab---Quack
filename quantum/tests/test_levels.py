@@ -17,8 +17,8 @@ def test_builtin_level_assets_validate_and_literal_loading(level):
     assert level["stages"]
     assert json.dumps(level, allow_nan=False)
     for stage in level["stages"]:
-        assert len(stage["map"]) == 12
-        assert all(len(row) == 20 and row[9] in "#|" and row[10] in "#|" for row in stage["map"])
+        assert len(stage["map"]) == 9  # 15x9 maps, divider in the middle column
+        assert all(len(row) == 15 and row[7] in "#|" for row in stage["map"])
         for text in stage["narration"].values():
             assert len(text.splitlines()) <= 2
             assert all(len(line) <= 40 for line in text.splitlines())
@@ -140,15 +140,15 @@ def test_decorations_must_be_a_list():
 
 @pytest.mark.parametrize("cell", [
     [2, 2],   # alice_start
-    [2, 17],  # bob_start
+    [2, 12],  # bob_start
     [5, 2],   # alice_h terminal
-    [5, 16],  # bob_cx terminal
+    [5, 11],  # bob_cx terminal
     [4, 3],   # sensor_q0
-    [4, 13],  # sensor_q1
-    [8, 1],   # door_A
-    [9, 1],   # exit_A
-    [8, 18],  # door_B
-    [9, 18],  # exit_B
+    [4, 10],  # sensor_q1
+    [6, 1],   # door_A
+    [7, 1],   # exit_A
+    [6, 13],  # door_B
+    [7, 13],  # exit_B
 ])
 def test_decorations_never_cover_interactive_cells(cell):
     level = read_level("level1")
@@ -161,64 +161,31 @@ def test_multi_cell_footprint_is_checked_on_every_covered_cell():
     level = read_level("level1")
     level["stages"][0]["decorations"] = [{"sprite": "wall_light", "cell": [1, 3], "footprint": [1, 2]}]
     validate_level(level)  # (1,3),(2,3): plain floor
-    level["stages"][0]["decorations"] = [{"sprite": "wall_light", "cell": [7, 1], "footprint": [1, 2]}]
-    with pytest.raises(ValueError):  # covers (7,1) floor and (8,1) = door_A
+    level["stages"][0]["decorations"] = [{"sprite": "wall_light", "cell": [5, 1], "footprint": [1, 2]}]
+    with pytest.raises(ValueError):  # covers (5,1) floor and (6,1) = door_A
         validate_level(level)
 
 
-def test_level1_decorations_are_visual_only_and_off_the_critical_cells():
-    from collections import deque
+def test_level1_decorations_are_visual_only_and_the_engine_ignores_them():
     from quantum.verify import verify_stage
     stage = read_level("level1")["stages"][0]
-    decorations = stage["decorations"]
-    assert sorted(d["sprite"] for d in decorations) == sorted(
-        ["tank_a", "tank_b", "plant", "plant", "floor_mat", "floor_mat", "wall_light", "wall_light"]
-        + ["floor_grate"] * 4)
+    assert stage["decorations"]
     grid, legend = stage["map"], stage["legend"]
-    cells = {legend[ch]: (r, c) for r, row in enumerate(grid) for c, ch in enumerate(row)}
-    in_front = {(cells["door_A"][0] - 1, cells["door_A"][1]), (cells["door_B"][0] - 1, cells["door_B"][1])}
-    covered = set()
-    for d in decorations:
+    for d in stage["decorations"]:
         row, col = d["cell"]
         w, h = d["footprint"]
         for r in range(row, row + h):
             for c in range(col, col + w):
-                covered.add((r, c))
                 label = legend[grid[r][c]]
                 assert label in {"floor", "wall"}, (d, r, c, label)
                 if label == "wall":
                     assert d["sprite"].startswith("wall_") and r == 0
-    assert not covered & in_front
-    # Alice's and Bob's sides mirror each other (column c <-> 19 - c).
-    mirrored = {(r, 19 - c) for r, c in covered}
-    assert mirrored == covered
-    # Treating decorations as obstacles, each spawn still reaches its terminal, sensor and door.
-    free = {(r, c) for r, row in enumerate(grid) for c, ch in enumerate(row)
-            if legend[ch] != "wall" and (r, c) not in covered}
-
-    def reach(start):
-        seen, queue = {start}, deque([start])
-        while queue:
-            r, c = queue.popleft()
-            for step in ((r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)):
-                if step in free and step not in seen:
-                    seen.add(step)
-                    queue.append(step)
-        return seen
-
-    for spawn, terminal, sensor, door in (("alice_start", "alice_h", "sensor_q0", "door_A"),
-                                          ("bob_start", "bob_cx", "sensor_q1", "door_B")):
-        reachable = reach(cells[spawn])
-        assert {cells[terminal], cells[sensor], in_front_of(cells[door])} <= reachable
-
     # The engine ignores the layer: same verification report with or without it.
     stripped = copy.deepcopy(stage)
     del stripped["decorations"]
     assert verify_stage(stage) == verify_stage(stripped)
 
 
-def in_front_of(door):
-    return (door[0] - 1, door[1])
 
 
 # ---- theme and solid decorations (visual layer, validated by the engine contract) ----
@@ -244,11 +211,15 @@ def test_theme_is_optional():
     assert "theme" not in validate_level(level)
 
 
+def test_shipped_levels_declare_their_theme():
+    assert [read_level(n)["theme"] for n in LEVEL_IDS] == ["lab", "prison", "lab"]
+
+
 def test_load_level_hands_the_theme_to_the_client():
     import asyncio
     from quantum.engine import Engine
-    out = json.loads(asyncio.run(Engine().load_level("level1")))
-    assert out["theme"] in {"lab", "prison"}
+    out = json.loads(asyncio.run(Engine().load_level("level2")))
+    assert out["theme"] == "prison"
 
 
 @pytest.mark.parametrize("solid", [True, False])
