@@ -4,13 +4,13 @@
   "title": "The Core",
   "num_qubits": 2,
   "coordinate_convention": "[row, column], zero-based; map rows are listed top to bottom",
-  "integration_status": "requires_js_walkthrough",
-  "integration_notes": "Current entity estimate is 13: two players, two sensors, two exits, two lethal objects, four terminals, and one CX target. This exceeds the team limit of 10; entity-budget alignment is pending with Jhoan. Required gate access and quantum rules are intentionally preserved.",
-  "design_notes": "The shared debugger distributes classical measurement records. Neither player can signal through entanglement; local outcomes alone do not reveal the other player's actions.",
+  "integration_status": "requires_qollab_and_gameplay_walkthrough",
+  "integration_notes": "Ten physical map entities: two players, two sensors, two lethal objects, two exits and two plates of the shared CX terminal. Alice H/Z and Bob X are owned HUD controls with their own finite uses and the same engine gate budget, not extra map cells. CX requires both players on the map plates and an interaction key; the HUD cannot trigger it. Sensors are the only entry to each lethal exit lane, so the bridge and laser cannot be bypassed. Both explicit measurements and both spatial exits remain required. Runtime/visual walkthrough is pending.",
+  "design_notes": "Prepare a fresh Phi+ on entry because Level 2 finished measured in 00 or 01, not an entangled state. Canonical solution: CX(0,1) yields Alice|+> Bob|0>, Z(0) yields Alice|-> Bob|0>, H(0) yields game|10>. Z changes relative phase without changing computational-basis probabilities; H converts that phase into a definite bit. Alice's bridge exists for q0=1 and Bob's laser is safe for q1=0; the opposite measured values are lethal. Correct goal requires explicit measurements before completing the exits, not Bell parity. Without gameplay CX, the best ideal success under these resources is one half, not deterministic. The shared debugger communicates classical records; no signalling or experimental Bell-inequality claim. GHZ is out of this delivery.",
   "stages": [
     {
       "id": "core",
-      "title": "The Core",
+      "title": "Disentangle, Phase and Interfere",
       "initial_circuit": [["h", 0], ["cx", 0, 1]],
       "gate_set": {"alice": ["h", "z"], "bob": ["x"], "shared": ["cx"]},
       "max_gates": 5,
@@ -19,36 +19,43 @@
       "failure_policy": "death",
       "map": [
         "####################",
-        "#A.H....###....X.B##",
-        "#.#.Z...###.......##",
-        "#.S.C..D###d.s.c..##",
-        "#.....#.###.########",
-        "#.....#E###e########",
-        "####################",
-        "####################",
-        "####################",
-        "####################",
-        "####################",
+        "#........##........#",
+        "#.A......##......B.#",
+        "#........##........#",
+        "#.......C##c.......#",
+        "#........##........#",
+        "#........##........#",
+        "#S#......##......#s#",
+        "#D#......##......#d#",
+        "#E#......##......#e#",
+        "#.#......##......#.#",
         "####################"
       ],
-      "legend": {"A": "alice_start", "B": "bob_start", "S": "sensor_q0", "s": "sensor_q1", "E": "exit_A", "e": "exit_B", "D": "bridge_A", "d": "laser_B", "H": "alice_h", "Z": "alice_z", "X": "bob_x", "C": "shared_cx", "c": "shared_cx_target", "#": "wall", ".": "floor"},
+      "legend": {
+        "#": "wall", ".": "floor",
+        "A": "alice_start", "B": "bob_start",
+        "S": "sensor_q0", "s": "sensor_q1",
+        "C": "shared_cx", "c": "shared_cx_target",
+        "D": "bridge_A", "d": "laser_B",
+        "E": "exit_A", "e": "exit_B"
+      },
       "objects": {
         "bridge_A": {"type": "conditional_lethal_bridge", "qubit": 0, "open_on": 1, "lethal": true},
         "laser_B": {"type": "conditional_lethal_laser", "qubit": 1, "open_on": 0, "lethal": true}
       },
       "terminals": [
-        {"id": "alice_h", "cell": [1, 3], "gate": "h", "owner": "alice", "qubit": 0, "uses": 2},
-        {"id": "alice_z", "cell": [2, 4], "gate": "z", "owner": "alice", "qubit": 0, "uses": 1},
-        {"id": "bob_x", "cell": [1, 15], "gate": "x", "owner": "bob", "qubit": 1, "uses": 1},
-        {"id": "shared_cx", "cell": [3, 4], "target_cell": [3, 15], "gate": "cx", "owner": "shared", "qubit": 0, "target": 1, "uses": 1}
+        {"id": "alice_h", "placement": "hud", "gate": "h", "owner": "alice", "qubit": 0, "uses": 2},
+        {"id": "alice_z", "placement": "hud", "gate": "z", "owner": "alice", "qubit": 0, "uses": 1},
+        {"id": "bob_x", "placement": "hud", "gate": "x", "owner": "bob", "qubit": 1, "uses": 1},
+        {"id": "shared_cx", "cell": [4, 8], "target_cell": [4, 11], "gate": "cx", "owner": "shared", "qubit": 0, "target": 1, "uses": 1}
       ],
       "narration": {
-        "enter": "Break Bell; reach q0=1, q1=0.",
-        "first_gate": "Use CX, then Z and H on Alice.",
-        "first_measure": "Debugger shares classical results.",
-        "death": "Wrong bridge or laser bit is lethal.",
-        "glitch": "Fallback: sampled locally with Qiskit.",
-        "win": "CX, Z, H prepare |10>."
+        "enter": "Disentangle together on the CX plates.\nThen use Alice's Z and H controls.",
+        "first_gate": "Z changes phase, not probabilities.\nH turns that phase into Alice's bit.",
+        "first_measure": "Target bits: Alice=1 and Bob=0.\nMeasured qubits cannot take gates.",
+        "death": "Wrong bridge or laser bit is lethal.\nReset prepares a fresh Bell pair.",
+        "glitch": "Backend data disagrees with ideal.\nSee the sampling diagnostics.",
+        "win": "Interference prepared |10>.\nCross the safe lanes to both exits."
       }
     }
   ]

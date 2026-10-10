@@ -8,6 +8,8 @@ L2 revision (Oct10): fresh Phi+, Bob X/measure, explicit SEND/RECEIVE, Alice X i
 
 ## 1. Where the game runs
 
+L3 delivery (Oct10): same AliceH/Z/BobX/sharedCX, budget5/goal10. Finite-use HUD local gates keep ten physical entities; CX still requires both players on plates. The revised Python probe passed in Qollab built-in/Forte: CXZH→10,backend measurements1/0,safe hazards,reset. Actual plates/HUD/collisions/exits/audio/1P2P still need visual acceptance. Evidence handoff06§11.
+
 Whoever presses **Run** picks the backend, judges included. The game must work the same on all of them; only noise differs.
 
 | Backend | Runs in | Noise | Job limit | Status |
@@ -25,6 +27,7 @@ Whoever presses **Run** picks the backend, judges included. The game must work t
 4. **Sensor = measurement.** Stepping on it measures its qubit in the 0/1 basis. A measured qubit can't receive gates again. A qubit fixed by correlation but not yet measured still can (that is the whole idea of L2 stage 2).
 5. **Gate budget.** Each level sets `max_gates` (typically 5–6) and how many times each terminal can be used.
 6. **New L1 proof and physical locks.** Start |00>, empty circuit, doors closed. H→CX then RUN validates Phi+ and order; no measurement before validation. Both physical doors unlock only after both explicit measurements match. Quantum object value0 is not an open door; frontend uses door_states. Reset clears the validation proof. RUN consumes no gate/job.
+7. **HUD local gates in L3.** Gate/owner/qubit/uses/budget remain enforced by Python without a map cell. CX cannot be HUD: both physical plates required. Ten-entity physical-map budget preserved.
 
 ## 3. The measurement-state budget (the main constraint)
 
