@@ -11,13 +11,9 @@ const outIdx = process.argv.indexOf('--out');
 const out = outIdx > 0 ? resolve(process.argv[outIdx + 1]) : resolve(root, 'js/sprites.js');
 
 const INPUTS = [
-  ['SHEET_URL', 'assets/spritesheet.png'],
   ['ALICE_URL', 'assets/characters/alice_walk_4dir.png'],
   ['BOB_URL', 'assets/characters/bob_walk_4dir.png'],
-  // Fernanda's V2 lab atlas (256x256, tiny) embedded whole; DECOR_FRAMES is the hand-mapped rect registry (assets/lab_decorations.md).
-  ['DECOR_URL', 'assets/lab_elements.png'],
 ];
-const DECOR_FRAMES_JSON = 'assets/lab_decorations.json';
 // Themed sheets sliced from the AI art by scripts/slice-themes.sh: assets/themes/<theme>_{tiles,props}.png + <theme>.json.
 const THEME_NAMES = ['lab', 'prison'];
 
@@ -26,8 +22,6 @@ for (const [name, rel] of INPUTS) {
   const png = readFileSync(resolve(root, rel));
   lines.push(`export const ${name} = 'data:image/png;base64,${png.toString('base64')}';`);
 }
-const frames = JSON.parse(readFileSync(resolve(root, DECOR_FRAMES_JSON), 'utf8'));
-lines.push(`export const DECOR_FRAMES = ${JSON.stringify(frames)};`);
 const themes = {};
 for (const name of THEME_NAMES) {
   const reg = JSON.parse(readFileSync(resolve(root, `assets/themes/${name}.json`), 'utf8'));

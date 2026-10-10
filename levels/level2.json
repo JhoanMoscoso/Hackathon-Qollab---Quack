@@ -1,5 +1,6 @@
 {
   "schema_version": 2,
+  "theme": "prison",
   "id": "level2",
   "title": "Bell Block",
   "num_qubits": 2,

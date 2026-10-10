@@ -27,6 +27,24 @@ export function l1snap(name = 'initial', patch = {}) {
   return { ...structuredClone(l1fixtures[name]), ...patch };
 }
 
+// A synthetic 15x9 map (Batch 3 sizes): divider column 7, Alice cols 1-6, Bob cols 8-13.
+export const smallView = (extra = {}) => ({
+  id: 'small',
+  map: [
+    '###############',
+    '#.....A#B.....#',
+    '#......#......#',
+    '#..S...#...s..#',
+    '#......#......#',
+    '#......#......#',
+    '#......#......#',
+    '#.E....#....e.#',
+    '###############',
+  ],
+  legend: { A: 'alice_start', B: 'bob_start', S: 'sensor_q0', s: 'sensor_q1', E: 'exit_A', e: 'exit_B', '#': 'wall', '.': 'floor' },
+  ...extra,
+});
+
 /** Snapshot with the object states of a level that has qubit-bound doors (level 2 opposites, level 3). */
 export const objSnap = (objects, extra = {}) => ({
   objects, measured: [null, null], marginals: [[0.5, 0.5], [0.5, 0.5]], terminal_uses_left: {}, ...extra,

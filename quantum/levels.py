@@ -7,6 +7,7 @@ import json
 from copy import deepcopy
 
 LEVEL_IDS = ("level1", "level2", "level3")
+THEMES = ("lab", "prison")  # art sets of the client (assets/themes/*.json); purely visual
 
 
 def integer(value, lower=0, upper=None):
@@ -19,6 +20,8 @@ def validate_level(level: dict) -> dict:
         raise ValueError("Expected level schema_version 2")
     if level.get("id") not in LEVEL_IDS or type(level.get("num_qubits")) is not int or level["num_qubits"] != 2:
         raise ValueError("MVP levels require a known id and exactly two qubits")
+    if "theme" in level and level["theme"] not in THEMES:
+        raise ValueError("theme must be one of " + ", ".join(THEMES))
     stages = level.get("stages")
     if not isinstance(stages, list) or not stages:
         raise ValueError("A level needs at least one stage")
@@ -176,7 +179,8 @@ SCENERY_LABELS = {"wall", "floor", "region_separator"}
 def _check_decorations(decorations, grid, legend):
     """Purely visual layer: never read by the engine, but it must not hide gameplay cells.
 
-    Each item is {"sprite": name, "cell": [row, col] (top-left), "footprint": [w, h] in tiles}.
+    Each item is {"sprite": name, "cell": [row, col] (top-left), "footprint": [w, h] in tiles, "solid": bool (optional)}.
+    `solid` only matters to the client (it blocks movement over the footprint); the engine never reads it.
     Covered cells may only be plain scenery; wall cells are allowed solely for `wall_*` sprites.
     """
     if not isinstance(decorations, list):
@@ -193,6 +197,8 @@ def _check_decorations(decorations, grid, legend):
         if (not isinstance(footprint, list) or len(footprint) != 2
                 or not all(integer(n, lower=1) for n in footprint)):
             raise ValueError("Decoration footprint must be [w, h] positive integers")
+        if "solid" in deco and type(deco["solid"]) is not bool:
+            raise ValueError("Decoration solid must be a boolean")
         row, col = cell
         width, height = footprint
         if row + height > len(grid) or col + width > len(grid[0]):

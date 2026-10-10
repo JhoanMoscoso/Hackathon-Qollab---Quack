@@ -1,5 +1,6 @@
 {
   "schema_version": 2,
+  "theme": "lab",
   "id": "level1",
   "title": "Calibration Chamber",
   "num_qubits": 2,

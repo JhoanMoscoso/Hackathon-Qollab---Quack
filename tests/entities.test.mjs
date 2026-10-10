@@ -8,7 +8,7 @@ import {
   stageComplete, objectiveFailed, hazardCheck, sensorsUnderPlayers,
 } from '../js/entities.js';
 import * as entities from '../js/entities.js';
-import { view, worldOf, place, pos, l1snap, objSnap } from './helpers.mjs';
+import { view, worldOf, place, pos, l1snap, objSnap, smallView } from './helpers.mjs';
 
 const w1 = () => worldOf(1);
 
@@ -398,43 +398,59 @@ test('sensorsUnderPlayers: nothing for measured qubits, players off their sensor
   assert.deepEqual(sensorsUnderPlayers(w, l1snap('validated')), []);
 });
 
-test('decorations never block: every covered floor cell can be walked onto and across', () => {
-  const w = w1();
-  assert.ok(w.grid.decorations.length > 0);
-  let checked = 0;
-  for (const d of w.grid.decorations) {
-    for (let y = d.cell[1]; y < d.cell[1] + d.footprint[1]; y++) {
-      for (let x = d.cell[0]; x < d.cell[0] + d.footprint[0]; x++) {
-        if (w.grid.tiles[y][x] === '#') continue; // wall lights sit on walls, which stay walls
-        const id = x < 9 ? 'alice' : 'bob';
-        const from = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]
-          .find(([fx, fy]) => w.grid.tiles[fy]?.[fx] === '.' && (fx < 9) === (x < 9));
-        assert.ok(from, `decoration cell ${x},${y} has a floor neighbour`);
-        place(w, id, ...from);
-        const ev = stepPlayer(w, id, x - from[0], y - from[1], l1snap());
-        assert.deepEqual(ev, [{ type: 'move', player: id, x, y }], `${d.sprite} at ${x},${y}`);
-        checked += 1;
-      }
-    }
-  }
-  assert.equal(checked, 14, 'tanks 4 + plants 2 + mats 4 + grates 4 floor cells (wall lights excluded)');
-});
-
-test('walking a straight line across the mat, grate row and tank column raises no blocked events', () => {
-  const w = w1();
-  const snap = l1snap();
-  place(w, 'alice', 3, 6);
-  for (const x of [4, 5, 6]) assert.equal(stepPlayer(w, 'alice', 1, 0, snap)[0].type, 'move', `mat row x=${x}`);
-  place(w, 'alice', 7, 3);
-  for (const y of [2, 1]) assert.equal(stepPlayer(w, 'alice', 0, -1, snap)[0].type, 'move', `tank column y=${y}`); // tank_a (7,1)-(7,2)
-  place(w, 'bob', 16, 6);
-  for (const x of [15, 14, 13]) assert.equal(stepPlayer(w, 'bob', -1, 0, snap)[0].type, 'move', `bob mat row x=${x}`);
-  place(w, 'bob', 12, 3);
-  for (const y of [2, 1]) assert.equal(stepPlayer(w, 'bob', 0, -1, snap)[0].type, 'move', `tank_b column y=${y}`);
-});
-
 test('wall-light decorations do not make the top wall walkable', () => {
   const w = w1();
   place(w, 'alice', 5, 1);
   assert.deepEqual(stepPlayer(w, 'alice', 0, -1, l1snap()), [{ type: 'blocked', reason: 'wall' }]);
+});
+
+// ---------- variable map size: divider columns and solid decorations ----------
+const smallWorld = (extra = {}) => createWorld(parseLevel(smallView(extra)));
+const SNAP = { objects: {}, measured: [null, null], terminal_uses_left: {} };
+
+test('room rule follows the grid divider: a gap in the 15x9 divider lets each player in, but not past it', () => {
+  const v = smallView();
+  v.map[4] = v.map[4].slice(0, 7) + '.' + v.map[4].slice(8); // gap at (7, 4)
+  const w = createWorld(parseLevel(v));
+  place(w, 'alice', 6, 4);
+  assert.equal(stepPlayer(w, 'alice', 1, 0, SNAP)[0].type, 'move');
+  assert.deepEqual(stepPlayer(w, 'alice', 1, 0, SNAP), [{ type: 'blocked', reason: 'wall' }], 'alice may not cross to 8');
+  place(w, 'alice', 1, 1);
+  place(w, 'bob', 8, 4);
+  assert.equal(stepPlayer(w, 'bob', -1, 0, SNAP)[0].type, 'move');
+  assert.deepEqual(stepPlayer(w, 'bob', -1, 0, SNAP), [{ type: 'blocked', reason: 'wall' }], 'bob may not cross to 6');
+});
+
+test('solid decorations block movement over their whole footprint, floor decals do not', () => {
+  const w = smallWorld({ decorations: [
+    { sprite: 'server_rack_a', cell: [2, 2], footprint: [1, 2], solid: true },
+    { sprite: 'floor_grate', cell: [4, 4], footprint: [2, 1] },
+  ] });
+  assert.equal(w.solidCells.size, 2);
+  place(w, 'alice', 1, 2);
+  assert.deepEqual(stepPlayer(w, 'alice', 1, 0, SNAP), [{ type: 'blocked', reason: 'solid' }]);
+  place(w, 'alice', 1, 3);
+  assert.deepEqual(stepPlayer(w, 'alice', 1, 0, SNAP), [{ type: 'blocked', reason: 'solid' }], 'second row of the footprint');
+  place(w, 'alice', 3, 4);
+  assert.equal(stepPlayer(w, 'alice', 1, 0, SNAP)[0].type, 'move', 'grate is walk-over');
+  assert.equal(stepPlayer(w, 'alice', 1, 0, SNAP)[0].type, 'move');
+});
+
+test('solid defaults to the theme registry; an explicit solid:false wins; unknown sprites are walk-over', () => {
+  const w = smallWorld({ decorations: [
+    { sprite: 'locker', cell: [2, 2], footprint: [1, 2] },                    // registry: solid
+    { sprite: 'locker', cell: [4, 2], footprint: [1, 2], solid: false },       // explicit override
+    { sprite: 'no_such_sprite', cell: [2, 5], footprint: [1, 1] },
+    { sprite: 'plant', cell: [4, 5], footprint: [1, 1] },                      // lab registry: solid plant
+  ] });
+  assert.deepEqual([...w.solidCells].sort(), ['2,2', '2,3', '4,5']);
+  const prison = smallWorld({ theme: 'prison', decorations: [{ sprite: 'bunk_a', cell: [2, 2], footprint: [1, 2] }, { sprite: 'locker', cell: [4, 2], footprint: [1, 2] }] });
+  assert.equal(prison.solidCells.size, 4, 'prison registry knows bunk_a and locker');
+});
+
+test('solid decorations never block a player standing next to another entity: occupied/solid are distinct reasons', () => {
+  const w = smallWorld({ decorations: [{ sprite: 'plant', cell: [3, 2], footprint: [1, 1], solid: true }] });
+  place(w, 'alice', 2, 2);
+  place(w, 'bob', 8, 2);
+  assert.equal(stepPlayer(w, 'alice', 1, 0, SNAP)[0].reason, 'solid');
 });

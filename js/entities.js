@@ -2,7 +2,8 @@
 // Entities NEVER compute quantum state: they only read the engine snapshot and emit events
 // that main.js turns into engine calls. Coordinates are [x, y] = [col, row].
 
-import { isWall, inBounds, WALL_COLS } from './grid.js';
+import { isWall, inBounds, cellKey } from './grid.js';
+import { isSolidDecoration } from './theme.js';
 
 export class Player {
   constructor(id, qubit, x, y) { this.id = id; this.qubit = qubit; this.x = x; this.y = y; }
@@ -53,11 +54,24 @@ export class Exit {
   constructor(player, x, y) { this.player = player; this.x = x; this.y = y; }
 }
 
+/** 'x,y' keys of every cell covered by a solid decoration (explicit flag, else the theme registry default). */
+function solidDecorationCells(grid) {
+  const cells = new Set();
+  for (const d of grid.decorations) {
+    if (!isSolidDecoration(grid.theme, d)) continue;
+    for (let y = d.cell[1]; y < d.cell[1] + d.footprint[1]; y++) {
+      for (let x = d.cell[0]; x < d.cell[0] + d.footprint[0]; x++) cells.add(cellKey(x, y));
+    }
+  }
+  return cells;
+}
+
 /** Build all entities from a parseLevel() grid. */
 export function createWorld(grid) {
   const { alice, bob } = grid.spawns;
   return {
     grid,
+    solidCells: solidDecorationCells(grid),
     players: { alice: new Player('alice', 0, ...alice), bob: new Player('bob', 1, ...bob) },
     doors: grid.objects.map((o) => new Door(o.name, o.cell[0], o.cell[1], o.qubit, o.open_on, o.lethal, o.blocking, o.type)),
     sensors: grid.sensors.map((s) => new Sensor(s.qubit, s.cell[0], s.cell[1])),
@@ -95,10 +109,11 @@ const usesLeftOf = (terminal, id, snap) => {
 const at = (list, x, y) => list.find((e) => e.x === x && e.y === y);
 const blocked = (reason) => [{ type: 'blocked', reason }];
 
-// Rooms are separated: Alice stays left of the wall, Bob right of it. The CNOT niche only lets
-// them stand face to face.
-function crossesRooms(playerId, x) {
-  return playerId === 'alice' ? x > WALL_COLS[0] : x < WALL_COLS[1];
+// Rooms are separated by the grid's divider columns: Alice stays left of them, Bob right of them. A gap in the
+// divider (the CNOT niche) only lets them stand face to face.
+function crossesRooms(grid, playerId, x) {
+  const { divider } = grid;
+  return playerId === 'alice' ? x > divider[0] : x < divider[divider.length - 1];
 }
 
 /**
@@ -111,7 +126,8 @@ export function stepPlayer(world, playerId, dx, dy, snap) {
   const x = player.x + dx;
   const y = player.y + dy;
 
-  if (!inBounds(x, y) || isWall(world.grid, x, y) || crossesRooms(playerId, x)) return blocked('wall');
+  if (!inBounds(world.grid, x, y) || isWall(world.grid, x, y) || crossesRooms(world.grid, playerId, x)) return blocked('wall');
+  if (world.solidCells?.has(cellKey(x, y))) return blocked('solid');
   if (other.x === x && other.y === y) return blocked('occupied');
 
   const door = at(world.doors, x, y);

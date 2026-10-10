@@ -1,5 +1,6 @@
 {
   "schema_version": 2,
+  "theme": "lab",
   "id": "level3",
   "title": "The Core",
   "num_qubits": 2,

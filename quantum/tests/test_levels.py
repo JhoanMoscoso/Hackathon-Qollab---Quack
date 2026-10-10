@@ -219,3 +219,49 @@ def test_level1_decorations_are_visual_only_and_off_the_critical_cells():
 
 def in_front_of(door):
     return (door[0] - 1, door[1])
+
+
+# ---- theme and solid decorations (visual layer, validated by the engine contract) ----
+
+@pytest.mark.parametrize("theme", ["lab", "prison"])
+def test_known_themes_are_accepted_and_survive_validation(theme):
+    level = read_level("level1")
+    level["theme"] = theme
+    assert validate_level(level)["theme"] == theme
+
+
+@pytest.mark.parametrize("theme", ["jungle", "", None, 3, ["lab"], "LAB"])
+def test_unknown_themes_are_rejected(theme):
+    level = read_level("level1")
+    level["theme"] = theme
+    with pytest.raises(ValueError):
+        validate_level(level)
+
+
+def test_theme_is_optional():
+    level = read_level("level1")
+    level.pop("theme", None)
+    assert "theme" not in validate_level(level)
+
+
+def test_load_level_hands_the_theme_to_the_client():
+    import asyncio
+    from quantum.engine import Engine
+    out = json.loads(asyncio.run(Engine().load_level("level1")))
+    assert out["theme"] in {"lab", "prison"}
+
+
+@pytest.mark.parametrize("solid", [True, False])
+def test_solid_flag_on_a_decoration_is_accepted(solid):
+    level = read_level("level1")
+    deco = {"sprite": "plant", "cell": [4, 1], "footprint": [1, 1], "solid": solid}
+    level["stages"][0]["decorations"] = [deco]
+    assert validate_level(level)["stages"][0]["decorations"] == [deco]
+
+
+@pytest.mark.parametrize("solid", ["yes", 1, 0, None, [True]])
+def test_solid_flag_must_be_a_boolean(solid):
+    level = read_level("level1")
+    level["stages"][0]["decorations"] = [{"sprite": "plant", "cell": [4, 1], "footprint": [1, 1], "solid": solid}]
+    with pytest.raises(ValueError):
+        validate_level(level)

@@ -2,20 +2,79 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CELL, COLS, ROWS, WALL_COLS, parseLevel, isWall, inBounds, cellKey,
+  CELL, MAX_COLS, MAX_ROWS, parseLevel, isWall, inBounds, cellKey, dividerColumns,
 } from '../js/grid.js';
-import { view, gridOf } from './helpers.mjs';
+import { view, gridOf, smallView as small } from './helpers.mjs';
 
 const level = () => structuredClone(view(1));
 
-test('constants', () => {
+test('constants: 32 px cells, engine maximum 20x12', () => {
   assert.equal(CELL, 32);
-  assert.equal(COLS, 20);
-  assert.equal(ROWS, 12);
-  assert.deepEqual(WALL_COLS, [9, 10]);
+  assert.equal(MAX_COLS, 20);
+  assert.equal(MAX_ROWS, 12);
 });
 
-test('parses level1 as 20x12 with [y][x] tiles', () => {
+test('dividerColumns: odd widths have one middle column, even widths the two middle ones', () => {
+  assert.deepEqual(dividerColumns(15), [7]);
+  assert.deepEqual(dividerColumns(13), [6]);
+  assert.deepEqual(dividerColumns(20), [9, 10]);
+  assert.deepEqual(dividerColumns(12), [5, 6]);
+  assert.deepEqual(dividerColumns(3), [1]);
+});
+
+test('a 15x9 map parses: width/height come from the map and the divider is the middle column', () => {
+  const g = parseLevel(small());
+  assert.deepEqual([g.width, g.height], [15, 9]);
+  assert.deepEqual(g.divider, [7]);
+  assert.equal(g.tiles.length, 9);
+  assert.deepEqual(g.spawns, { alice: [6, 1], bob: [8, 1] });
+  assert.equal(g.theme, 'lab');
+});
+
+test('inBounds and isWall use the grid size, not a global one', () => {
+  const g = parseLevel(small());
+  assert.equal(inBounds(g, 14, 8), true);
+  assert.equal(inBounds(g, 15, 0), false);
+  assert.equal(inBounds(g, 0, 9), false);
+  assert.equal(isWall(g, 15, 3), true);
+  assert.equal(isWall(g, 14, 3), true);
+  assert.equal(isWall(g, 13, 3), false);
+});
+
+test('theme: lab by default, prison when asked, anything else throws', () => {
+  assert.equal(parseLevel(small()).theme, 'lab');
+  assert.equal(parseLevel(small({ theme: 'prison' })).theme, 'prison');
+  assert.throws(() => parseLevel(small({ theme: 'jungle' })), /theme/);
+});
+
+test('maps must be rectangular and at most 20x12', () => {
+  const ragged = small();
+  ragged.map[3] = ragged.map[3].slice(1);
+  assert.throws(() => parseLevel(ragged), /wide/);
+  const wide = small();
+  wide.map = wide.map.map((r) => r + '.....#'.slice(0, 6));
+  assert.throws(() => parseLevel(wide), /20/);
+  const tall = small();
+  tall.map = [...tall.map, ...tall.map];
+  assert.throws(() => parseLevel(tall), /12/);
+  assert.throws(() => parseLevel(small({ map: [] })), /map/);
+  assert.throws(() => parseLevel(small({ map: 'nope' })), /map/);
+});
+
+test('a decoration keeps its optional solid flag', () => {
+  const g = parseLevel(small({ decorations: [
+    { sprite: 'locker', cell: [2, 2], footprint: [1, 2], solid: true },
+    { sprite: 'floor_grate', cell: [3, 3], footprint: [2, 1], solid: false },
+    { sprite: 'plant', cell: [4, 4] },
+  ] }));
+  assert.deepEqual(g.decorations, [
+    { sprite: 'locker', cell: [2, 2], footprint: [1, 2], solid: true },
+    { sprite: 'floor_grate', cell: [3, 3], footprint: [2, 1], solid: false },
+    { sprite: 'plant', cell: [4, 4], footprint: [1, 1] },
+  ]);
+});
+
+test('parses level1 as 20x12 with [y][x] tiles and the old two-column divider', () => {
   const g = gridOf(1);
   assert.equal(g.width, 20);
   assert.equal(g.height, 12);
@@ -24,6 +83,7 @@ test('parses level1 as 20x12 with [y][x] tiles', () => {
   assert.equal(g.tiles[2][2], 'A');
   assert.equal(g.tiles[5][16], 'C'); // Bob's CX terminal sits inside his room
   assert.equal(g.tiles[4][9], '#'); // central wall is solid
+  assert.deepEqual(g.divider, [9, 10]);
 });
 
 test('every real level and stage parses', () => {
@@ -53,8 +113,8 @@ test("level1 has no co-op cnot: Bob's CX (no target_cell) is a plain owner termi
 
 test('level1 central wall is solid on every row', () => {
   const g = gridOf(1);
-  for (let y = 0; y < ROWS; y++) {
-    for (const x of WALL_COLS) assert.equal(isWall(g, x, y), true, `${x},${y}`);
+  for (let y = 0; y < g.height; y++) {
+    for (const x of g.divider) assert.equal(isWall(g, x, y), true, `${x},${y}`);
   }
 });
 
@@ -100,10 +160,10 @@ test('isWall / inBounds / cellKey', () => {
   assert.equal(isWall(g, -1, 3), true);
   assert.equal(isWall(g, 20, 3), true);
   assert.equal(isWall(g, 3, 12), true);
-  assert.equal(inBounds(0, 0), true);
-  assert.equal(inBounds(19, 11), true);
-  assert.equal(inBounds(20, 0), false);
-  assert.equal(inBounds(0, -1), false);
+  assert.equal(inBounds(g, 0, 0), true);
+  assert.equal(inBounds(g, 19, 11), true);
+  assert.equal(inBounds(g, 20, 0), false);
+  assert.equal(inBounds(g, 0, -1), false);
   assert.equal(cellKey(3, 7), '3,7');
 });
 
@@ -125,12 +185,6 @@ test('throws on a 22-wide map', () => {
   const l = level();
   l.map = l.map.map((r) => r[0] + r + r[0]);
   assert.throws(() => parseLevel(l), /20/);
-});
-
-test('throws on wrong row count', () => {
-  const l = level();
-  l.map = l.map.slice(0, 11);
-  assert.throws(() => parseLevel(l), /12/);
 });
 
 test('throws when a spawn is missing', () => {

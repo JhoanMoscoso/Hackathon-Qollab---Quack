@@ -107,3 +107,13 @@ test('a stage without decorations yields an empty list', () => {
   assert.deepEqual(stageView(loadLevel(2), 0).decorations, []);
   assert.deepEqual(stageView(loadLevel(3), 0).decorations, []);
 });
+
+test('theme passes through to the stage view, defaulting to lab; decoration solid flags and [row, col] cells survive', () => {
+  const level = structuredClone(loadLevel(1));
+  assert.equal(stageView(level, 0).theme, 'lab');
+  level.theme = 'prison';
+  level.stages[0].decorations = [{ sprite: 'locker', cell: [2, 7], footprint: [1, 2], solid: true }];
+  const v = stageView(level, 0);
+  assert.equal(v.theme, 'prison');
+  assert.deepEqual(v.decorations, [{ sprite: 'locker', cell: [7, 2], footprint: [1, 2], solid: true }]);
+});

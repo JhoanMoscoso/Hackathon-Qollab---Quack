@@ -3,7 +3,7 @@
 // to dev/engine_bridge.js in dev/index.html). Engine calls happen on events only, never per frame.
 import * as engine from 'quantum.engine';
 import { createStateMachine, STATES } from './js/state.js';
-import { parseLevel } from './js/grid.js';
+import { parseLevel, CELL } from './js/grid.js';
 import { stageView } from './js/level_adapter.js';
 import {
   createWorld, resetWorld, stepPlayer, interact, consumeTerminal, syncTerminalUses, stageComplete, objectiveFailed, hazardCheck,
@@ -40,14 +40,19 @@ reduceBox.checked = !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)'
 const renderer = createRenderer(canvas, { reduceMotion: reduceBox.checked });
 
 // ---------- canvas fit ----------
-// The board cell (CSS decides its size) holds the canvas, which CSS cannot size to "largest 5:3 that fits" alone.
-// The CSS size follows the cell at once; the backing store (an integer multiple of 640x384, matched to
+// The board cell (CSS decides its size) holds the canvas, which CSS cannot size to "largest box of the map's aspect
+// ratio that fits" alone. Maps have any size up to 20x12 cells, so the logical canvas (grid.width x grid.height
+// cells of 32 px) comes from the current grid; --board-w/--board-h feed the narrow layout's aspect-ratio.
+// The CSS size follows the cell at once; the backing store (an integer multiple of the logical size, matched to
 // size x devicePixelRatio) is debounced because resizing a canvas clears it. render.draw() keeps logical coords.
 const board = canvas.parentElement;
 function fitCanvasToBoard(applyScale) {
+  const logicalW = (grid?.width ?? 20) * CELL, logicalH = (grid?.height ?? 12) * CELL;
+  board.style.setProperty('--board-w', logicalW);
+  board.style.setProperty('--board-h', logicalH);
   const w = board.clientWidth, h = board.clientHeight;
   if (!w || !h) return; // game screen hidden
-  const fitted = fitCanvas({ availW: w, availH: h, dpr: globalThis.devicePixelRatio || 1 });
+  const fitted = fitCanvas({ availW: w, availH: h, dpr: globalThis.devicePixelRatio || 1, logicalW, logicalH });
   canvas.style.width = `${fitted.cssW}px`;
   canvas.style.height = `${fitted.cssH}px`;
   if (applyScale) renderer.setScale(fitted.scale);
@@ -115,6 +120,7 @@ async function precomputeOnce() {
 function buildWorld() {
   grid = parseLevel(stageView(level, snap.stage_index ?? 0));
   world = createWorld(grid);
+  fitCanvasToBoard(true); // the next stage may have another map size
 }
 
 function showMenuNote(msg) {

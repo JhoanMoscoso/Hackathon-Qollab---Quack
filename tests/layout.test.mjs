@@ -23,6 +23,22 @@ test('fitCanvas scale follows devicePixelRatio and rounds to an integer', () => 
   assert.equal(fitCanvas({ availW: 1000, availH: 600, dpr: 1.25 }).scale, 2); // 1.95 -> 2
 });
 
+test('fitCanvas takes the logical size: 15x9 cells (480x288) keep their 5:3 ratio and scale from 480', () => {
+  const r = fitCanvas({ availW: 1500, availH: 600, dpr: 1, logicalW: 480, logicalH: 288 });
+  assert.deepEqual(r, { cssW: 1000, cssH: 600, scale: 2 }); // 1000 / 480 = 2.08 -> 2
+  assert.equal(fitCanvas({ availW: 480, availH: 900, dpr: 1, logicalW: 480, logicalH: 288 }).scale, 1);
+  assert.equal(fitCanvas({ availW: 960, availH: 576, dpr: 2, logicalW: 480, logicalH: 288 }).scale, 4);
+});
+
+test('fitCanvas follows a non-5:3 logical size (a 20x12 map is 5:3 too, a 10x9 map is not)', () => {
+  const r = fitCanvas({ availW: 1000, availH: 1000, dpr: 1, logicalW: 320, logicalH: 288 });
+  assert.equal(r.cssW, 1000);
+  assert.equal(r.cssH, 900);
+  const wide = fitCanvas({ availW: 1000, availH: 300, dpr: 1, logicalW: 320, logicalH: 288 });
+  assert.equal(wide.cssH, 299); // floored, never taller than the box
+  assert.equal(wide.cssW, 333);
+});
+
 test('fitCanvas never goes below scale 1 and never returns NaN for a collapsed box', () => {
   assert.equal(fitCanvas({ availW: 100, availH: 60, dpr: 1 }).scale, 1);
   for (const [w, h, d] of [[0, 0, 1], [-5, 10, 1], [NaN, 100, 1], [300, 200, 0], [300, 200, undefined]]) {
