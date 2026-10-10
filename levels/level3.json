@@ -1,0 +1,55 @@
+{
+  "schema_version": 2,
+  "id": "level3",
+  "title": "The Core",
+  "num_qubits": 2,
+  "coordinate_convention": "[row, column], zero-based; map rows are listed top to bottom",
+  "integration_status": "requires_js_walkthrough",
+  "integration_notes": "Current entity estimate is 13: two players, two sensors, two exits, two lethal objects, four terminals, and one CX target. This exceeds the team limit of 10; entity-budget alignment is pending with Jhoan. Required gate access and quantum rules are intentionally preserved.",
+  "design_notes": "The shared debugger distributes classical measurement records. Neither player can signal through entanglement; local outcomes alone do not reveal the other player's actions.",
+  "stages": [
+    {
+      "id": "core",
+      "title": "The Core",
+      "initial_circuit": [["h", 0], ["cx", 0, 1]],
+      "gate_set": {"alice": ["h", "z"], "bob": ["x"], "shared": ["cx"]},
+      "max_gates": 5,
+      "win": {"q0": 1, "q1": 0},
+      "required_measurements": [0, 1],
+      "failure_policy": "death",
+      "map": [
+        "####################",
+        "#A.H....###....X.B##",
+        "#.#.Z...###.......##",
+        "#.S.C..D###d.s.c..##",
+        "#.....#.###.########",
+        "#.....#E###e########",
+        "####################",
+        "####################",
+        "####################",
+        "####################",
+        "####################",
+        "####################"
+      ],
+      "legend": {"A": "alice_start", "B": "bob_start", "S": "sensor_q0", "s": "sensor_q1", "E": "exit_A", "e": "exit_B", "D": "bridge_A", "d": "laser_B", "H": "alice_h", "Z": "alice_z", "X": "bob_x", "C": "shared_cx", "c": "shared_cx_target", "#": "wall", ".": "floor"},
+      "objects": {
+        "bridge_A": {"type": "conditional_lethal_bridge", "qubit": 0, "open_on": 1, "lethal": true},
+        "laser_B": {"type": "conditional_lethal_laser", "qubit": 1, "open_on": 0, "lethal": true}
+      },
+      "terminals": [
+        {"id": "alice_h", "cell": [1, 3], "gate": "h", "owner": "alice", "qubit": 0, "uses": 2},
+        {"id": "alice_z", "cell": [2, 4], "gate": "z", "owner": "alice", "qubit": 0, "uses": 1},
+        {"id": "bob_x", "cell": [1, 15], "gate": "x", "owner": "bob", "qubit": 1, "uses": 1},
+        {"id": "shared_cx", "cell": [3, 4], "target_cell": [3, 15], "gate": "cx", "owner": "shared", "qubit": 0, "target": 1, "uses": 1}
+      ],
+      "narration": {
+        "enter": "Break Bell; reach q0=1, q1=0.",
+        "first_gate": "Use CX, then Z and H on Alice.",
+        "first_measure": "Debugger shares classical results.",
+        "death": "Wrong bridge or laser bit is lethal.",
+        "glitch": "Fallback: sampled locally with Qiskit.",
+        "win": "CX, Z, H prepare |10>."
+      }
+    }
+  ]
+}
