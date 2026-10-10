@@ -2,7 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { inflateSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -30,20 +31,93 @@ test('generated file has the header and the PNG data URLs', async () => {
   }
 });
 
-test('generated file embeds the decoration atlas (DECOR_URL) and its frames (DECOR_FRAMES)', async () => {
+// Minimal PNG reader for the 8-bit RGBA, non-interlaced V2 atlas (alpha plane only is needed).
+function readPng(path) {
+  const buf = readFileSync(path);
+  assert.equal(buf.subarray(1, 4).toString(), 'PNG');
+  let width = 0, height = 0;
+  const idat = [];
+  for (let at = 8; at < buf.length;) {
+    const len = buf.readUInt32BE(at);
+    const type = buf.toString('latin1', at + 4, at + 8);
+    const body = buf.subarray(at + 8, at + 8 + len);
+    if (type === 'IHDR') {
+      width = body.readUInt32BE(0); height = body.readUInt32BE(4);
+      assert.deepEqual([...body.subarray(8, 13)], [8, 6, 0, 0, 0], 'expected 8-bit RGBA, no interlace');
+    } else if (type === 'IDAT') idat.push(body);
+    at += 12 + len;
+  }
+  const raw = inflateSync(Buffer.concat(idat));
+  const stride = width * 4;
+  const px = Buffer.alloc(stride * height);
+  for (let y = 0; y < height; y++) {
+    const filter = raw[y * (stride + 1)];
+    for (let i = 0; i < stride; i++) {
+      const cur = raw[y * (stride + 1) + 1 + i];
+      const a = i >= 4 ? px[y * stride + i - 4] : 0;
+      const b = y > 0 ? px[(y - 1) * stride + i] : 0;
+      const c = i >= 4 && y > 0 ? px[(y - 1) * stride + i - 4] : 0;
+      const pred = [0, a, b, (a + b) >> 1, (() => {
+        const p = a + b - c; const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+        return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      })()][filter];
+      px[y * stride + i] = (cur + pred) & 255;
+    }
+  }
+  return { width, height, alpha: (x, y) => px[y * stride + x * 4 + 3] };
+}
+
+const REGISTRY = new URL('../assets/lab_decorations.json', import.meta.url);
+const ATLAS = new URL('../assets/lab_elements.png', import.meta.url);
+const NAMES = ['tank_a', 'tank_b', 'plant', 'floor_mat', 'wall_light', 'floor_grate'];
+
+test('generated file embeds Fernanda V2 whole (DECOR_URL) and the hand-mapped registry (DECOR_FRAMES)', async () => {
   const mod = await import('../js/sprites.js');
   assert.match(mod.DECOR_URL, /^data:image\/png;base64,iVBORw0KGgo/);
-  const atlasPng = readFileSync(new URL('../assets/lab_decorations_atlas.png', import.meta.url));
-  assert.equal(mod.DECOR_URL, `data:image/png;base64,${atlasPng.toString('base64')}`);
-  const frames = JSON.parse(readFileSync(new URL('../assets/lab_decorations_atlas.json', import.meta.url), 'utf8'));
-  assert.deepEqual(mod.DECOR_FRAMES, frames);
-  for (const name of ['tank_chick', 'tank_jelly', 'plant', 'rug', 'grate', 'wall_light']) {
-    const f = mod.DECOR_FRAMES[name];
-    assert.ok(f, name);
-    assert.ok(Number.isInteger(f.x) && Number.isInteger(f.y) && f.w > 0 && f.h > 0, name);
+  assert.equal(mod.DECOR_URL, `data:image/png;base64,${readFileSync(ATLAS).toString('base64')}`);
+  const registry = JSON.parse(readFileSync(REGISTRY, 'utf8'));
+  assert.deepEqual(mod.DECOR_FRAMES, registry);
+  assert.deepEqual(Object.keys(mod.DECOR_FRAMES).sort(), [...NAMES].sort());
+});
+
+test('the retired V1 crop pipeline is gone', () => {
+  for (const rel of ['../assets/src/build_decorations.py', '../assets/lab_decorations_atlas.png', '../assets/lab_decorations_atlas.json']) {
+    assert.equal(existsSync(new URL(rel, import.meta.url)), false, rel);
+  }
+});
+
+test('registry rects: integers inside the atlas, disjoint, 2x sprite fits its footprint', () => {
+  const png = readPng(ATLAS);
+  const frames = JSON.parse(readFileSync(REGISTRY, 'utf8'));
+  const entries = Object.entries(frames);
+  for (const [name, f] of entries) {
+    assert.ok([f.x, f.y, f.w, f.h].every(Number.isInteger) && f.w > 0 && f.h > 0, name);
+    assert.ok(f.x >= 0 && f.y >= 0 && f.x + f.w <= png.width && f.y + f.h <= png.height, `${name} inside atlas`);
     const [fw, fh] = f.footprint;
-    assert.ok(f.w <= fw * 32 && f.h <= fh * 32, `${name} fits its footprint at 2x`);
-    assert.ok(f.w === fw * 32 || f.h === fh * 32, `${name} fills one footprint axis`);
+    assert.ok(Number.isInteger(fw) && Number.isInteger(fh) && fw >= 1 && fh >= 1, `${name} footprint`);
+    assert.ok(f.w * 2 <= fw * 32 && f.h * 2 <= fh * 32, `${name} fits its footprint at 2x`);
+    assert.ok(f.w * 2 > (fw - 1) * 32 || f.h * 2 > (fh - 1) * 32, `${name} footprint is not larger than needed`);
+  }
+  for (let i = 0; i < entries.length; i++) {
+    for (let j = i + 1; j < entries.length; j++) {
+      const [na, a] = entries[i], [nb, b] = entries[j];
+      const apart = a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
+      assert.ok(apart, `${na} and ${nb} overlap`);
+    }
+  }
+});
+
+test('registry rects are tight: opaque pixels on every edge, so a sprite is whole and has no empty margin', () => {
+  const png = readPng(ATLAS);
+  for (const [name, f] of Object.entries(JSON.parse(readFileSync(REGISTRY, 'utf8')))) {
+    const opaque = (x, y) => png.alpha(x, y) > 0;
+    const edge = (pts) => pts.some(([x, y]) => opaque(x, y));
+    const cols = [...Array(f.w).keys()].map((i) => f.x + i);
+    const rows = [...Array(f.h).keys()].map((i) => f.y + i);
+    assert.ok(edge(cols.map((x) => [x, f.y])), `${name} top edge`);
+    assert.ok(edge(cols.map((x) => [x, f.y + f.h - 1])), `${name} bottom edge`);
+    assert.ok(edge(rows.map((y) => [f.x, y])), `${name} left edge`);
+    assert.ok(edge(rows.map((y) => [f.x + f.w - 1, y])), `${name} right edge`);
   }
 });
 

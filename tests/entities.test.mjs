@@ -361,20 +361,20 @@ test('decorations never block: every covered floor cell can be walked onto and a
       }
     }
   }
-  assert.ok(checked >= 16, `checked ${checked} covered cells`);
+  assert.equal(checked, 14, 'tanks 4 + plants 2 + mats 4 + grates 4 floor cells (wall lights excluded)');
 });
 
-test('walking a straight line across the rug, grate row and tank column raises no blocked events', () => {
+test('walking a straight line across the mat, grate row and tank column raises no blocked events', () => {
   const w = w1();
   const snap = l1snap();
   place(w, 'alice', 4, 3);
-  for (const x of [5, 6, 7]) assert.equal(stepPlayer(w, 'alice', 1, 0, snap)[0].type, 'move', `rug row x=${x}`);
+  for (const x of [5, 6, 7]) assert.equal(stepPlayer(w, 'alice', 1, 0, snap)[0].type, 'move', `mat row x=${x}`);
   place(w, 'alice', 7, 3);
-  for (const y of [2, 1]) assert.equal(stepPlayer(w, 'alice', 0, -1, snap)[0].type, 'move', `tank column y=${y}`); // tank_chick (7,1)-(7,2)
+  for (const y of [2, 1]) assert.equal(stepPlayer(w, 'alice', 0, -1, snap)[0].type, 'move', `tank column y=${y}`); // tank_a (7,1)-(7,2)
   place(w, 'bob', 11, 3);
-  for (const x of [12, 13, 14]) assert.equal(stepPlayer(w, 'bob', 1, 0, snap)[0].type, 'move', `bob rug row x=${x}`);
+  for (const x of [12, 13, 14]) assert.equal(stepPlayer(w, 'bob', 1, 0, snap)[0].type, 'move', `bob mat row x=${x}`);
   place(w, 'bob', 12, 3);
-  for (const y of [2, 1]) assert.equal(stepPlayer(w, 'bob', 0, -1, snap)[0].type, 'move', `jelly tank column y=${y}`);
+  for (const y of [2, 1]) assert.equal(stepPlayer(w, 'bob', 0, -1, snap)[0].type, 'move', `tank_b column y=${y}`);
 });
 
 test('wall-light decorations do not make the top wall walkable', () => {

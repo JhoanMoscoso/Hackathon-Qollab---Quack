@@ -1,9 +1,8 @@
 {
-  "_comment": "Crop spec for assets/src/build_decorations.py. src = [x0, y0, x1, y1] pixel rect in assets/lab_elements.png (the atlas Fernanda's guide calls lab_decorations.png); footprint = [w, h] in logical tiles (32 screen px each at 2x).",
-  "tank_chick": {"src": [28, 44, 121, 232], "footprint": [1, 2]},
-  "tank_jelly": {"src": [320, 44, 412, 232], "footprint": [1, 2]},
-  "plant": {"src": [28, 256, 120, 396], "footprint": [1, 2]},
-  "rug": {"src": [28, 884, 204, 996], "footprint": [2, 1]},
-  "grate": {"src": [484, 904, 568, 988], "footprint": [1, 1]},
-  "wall_light": {"src": [1448, 772, 1492, 876], "footprint": [1, 1]}
+  "tank_a": {"x": 79, "y": 7, "w": 7, "h": 17, "footprint": [1, 2]},
+  "tank_b": {"x": 90, "y": 7, "w": 6, "h": 17, "footprint": [1, 2]},
+  "plant": {"x": 51, "y": 23, "w": 6, "h": 8, "footprint": [1, 1]},
+  "floor_mat": {"x": 214, "y": 19, "w": 24, "h": 6, "footprint": [2, 1]},
+  "wall_light": {"x": 227, "y": 7, "w": 6, "h": 3, "footprint": [1, 1]},
+  "floor_grate": {"x": 165, "y": 18, "w": 10, "h": 12, "footprint": [1, 1]}
 }

@@ -5,7 +5,7 @@
 // diagonal stripes + "?" badge; exits and players carry an A/B letter.
 
 import { CELL, COLS, ROWS, WALL_COLS } from './grid.js';
-import { characterFrame, dirFromDelta, walkFrameIndex, isFloorDetail, decorSpritePos } from './sprite_map.js';
+import { characterFrame, dirFromDelta, walkFrameIndex, isFloorDetail, decorSpritePos, DECOR_SCALE } from './sprite_map.js';
 
 export const WIDTH = COLS * CELL;  // 640
 export const HEIGHT = ROWS * CELL; // 384
@@ -162,9 +162,9 @@ function drawWalls(ctx, grid) {
 
 /**
  * Lab decorations (visual only, from the separate atlas SPRITES.decor = { image, frames }).
- * Two passes keep the guide's order: floor details (rug, grate) go right after floor and walls,
+ * Two passes keep the guide's order: floor details (floor_* mats, grates) go right after floor and walls,
  * the rest (tanks, plants, lights) after them, always below consoles, doors, sensors and players.
- * Each sprite is drawn 1:1 at its packed size (already 2x), bottom-centre aligned in its footprint.
+ * Each frame is a source rect of the V2 atlas, drawn at an integer 2x (nearest neighbour), bottom-centre aligned in its footprint.
  * Nothing is drawn when the decor atlas is absent or a sprite name is unknown.
  */
 function drawDecorations(ctx, grid, floorDetails) {
@@ -174,7 +174,7 @@ function drawDecorations(ctx, grid, floorDetails) {
     const frame = decor.frames[d.sprite];
     if (!frame || isFloorDetail(d.sprite) !== floorDetails) continue;
     const [x, y] = decorSpritePos(d.cell, d.footprint ?? frame.footprint ?? [1, 1], frame);
-    ctx.drawImage(decor.image, frame.x, frame.y, frame.w, frame.h, x, y, frame.w, frame.h);
+    ctx.drawImage(decor.image, frame.x, frame.y, frame.w, frame.h, x, y, frame.w * DECOR_SCALE, frame.h * DECOR_SCALE);
   }
 }
 
@@ -494,7 +494,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
       drawFloor(ctx);
       drawWalls(ctx, world.grid);
-      drawDecorations(ctx, world.grid, true);  // floor details: rug, grate
+      drawDecorations(ctx, world.grid, true);  // floor details: mats, grates
       drawDecorations(ctx, world.grid, false); // tanks, plants, lights
       if (snap) {
         for (const door of world.doors) drawDoor(ctx, door, snap, t, reduce);

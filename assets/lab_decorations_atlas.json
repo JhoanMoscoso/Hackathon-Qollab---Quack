@@ -1,8 +1,0 @@
-{
-  "tank_chick": {"x": 0, "y": 0, "w": 32, "h": 64, "footprint": [1, 2]},
-  "tank_jelly": {"x": 33, "y": 0, "w": 31, "h": 64, "footprint": [1, 2]},
-  "plant": {"x": 65, "y": 0, "w": 32, "h": 48, "footprint": [1, 2]},
-  "rug": {"x": 0, "y": 65, "w": 50, "h": 32, "footprint": [2, 1]},
-  "grate": {"x": 51, "y": 65, "w": 32, "h": 32, "footprint": [1, 1]},
-  "wall_light": {"x": 84, "y": 65, "w": 13, "h": 32, "footprint": [1, 1]}
-}

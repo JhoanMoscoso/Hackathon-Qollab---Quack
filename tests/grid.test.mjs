@@ -209,13 +209,13 @@ test('grid.decorations defaults to [] and passes the stage list through as [x, y
   assert.deepEqual(gridOf(2).decorations, []);
   const g = gridOf(1);
   assert.ok(g.decorations.length > 0);
-  const t = g.decorations.find((d) => d.sprite === 'tank_jelly');
-  assert.deepEqual(t, { sprite: 'tank_jelly', cell: [12, 1], footprint: [1, 2] });
+  const t = g.decorations.find((d) => d.sprite === 'tank_b');
+  assert.deepEqual(t, { sprite: 'tank_b', cell: [12, 1], footprint: [1, 2] });
   const flat = level();
   delete flat.decorations;
   assert.deepEqual(parseLevel(flat).decorations, []);
-  flat.decorations = [{ sprite: 'rug', cell: [5, 3] }]; // footprint defaults to 1x1
-  assert.deepEqual(parseLevel(flat).decorations, [{ sprite: 'rug', cell: [5, 3], footprint: [1, 1] }]);
+  flat.decorations = [{ sprite: 'floor_mat', cell: [5, 3] }]; // footprint defaults to 1x1
+  assert.deepEqual(parseLevel(flat).decorations, [{ sprite: 'floor_mat', cell: [5, 3], footprint: [1, 1] }]);
 });
 
 test('decorations never change tiles, spawns, terminals or objects', () => {

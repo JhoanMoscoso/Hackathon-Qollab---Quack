@@ -76,18 +76,18 @@
         }
       ],
       "decorations": [
-        {"sprite": "tank_chick", "cell": [1, 7], "footprint": [1, 2]},
+        {"sprite": "tank_a", "cell": [1, 7], "footprint": [1, 2]},
         {"sprite": "wall_light", "cell": [0, 5], "footprint": [1, 1]},
-        {"sprite": "plant", "cell": [4, 1], "footprint": [1, 2]},
-        {"sprite": "rug", "cell": [3, 5], "footprint": [2, 1]},
-        {"sprite": "grate", "cell": [5, 6], "footprint": [1, 1]},
-        {"sprite": "grate", "cell": [5, 7], "footprint": [1, 1]},
-        {"sprite": "tank_jelly", "cell": [1, 12], "footprint": [1, 2]},
+        {"sprite": "plant", "cell": [4, 1], "footprint": [1, 1]},
+        {"sprite": "floor_mat", "cell": [3, 5], "footprint": [2, 1]},
+        {"sprite": "floor_grate", "cell": [5, 6], "footprint": [1, 1]},
+        {"sprite": "floor_grate", "cell": [5, 7], "footprint": [1, 1]},
+        {"sprite": "tank_b", "cell": [1, 12], "footprint": [1, 2]},
         {"sprite": "wall_light", "cell": [0, 14], "footprint": [1, 1]},
-        {"sprite": "plant", "cell": [4, 18], "footprint": [1, 2]},
-        {"sprite": "rug", "cell": [3, 13], "footprint": [2, 1]},
-        {"sprite": "grate", "cell": [5, 12], "footprint": [1, 1]},
-        {"sprite": "grate", "cell": [5, 13], "footprint": [1, 1]}
+        {"sprite": "plant", "cell": [4, 18], "footprint": [1, 1]},
+        {"sprite": "floor_mat", "cell": [3, 13], "footprint": [2, 1]},
+        {"sprite": "floor_grate", "cell": [5, 12], "footprint": [1, 1]},
+        {"sprite": "floor_grate", "cell": [5, 13], "footprint": [1, 1]}
       ],
       "narration": {
         "enter": "Qubits start at |00>.\nBuild a Bell pair, then run it.",

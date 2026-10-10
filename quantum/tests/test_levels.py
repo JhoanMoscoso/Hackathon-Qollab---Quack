@@ -150,8 +150,8 @@ def _deco(stage, **fields):
 
 
 @pytest.mark.parametrize("deco", [
-    {"sprite": "plant", "cell": [4, 1], "footprint": [1, 2]},      # floor
-    {"sprite": "rug", "cell": [3, 5], "footprint": [2, 1]},
+    {"sprite": "plant", "cell": [4, 1], "footprint": [1, 1]},      # floor
+    {"sprite": "floor_mat", "cell": [3, 5], "footprint": [2, 1]},
     {"sprite": "wall_light", "cell": [0, 5], "footprint": [1, 1]},  # wall cell, wall_ prefix
 ])
 def test_valid_decorations_are_accepted(deco):
@@ -209,7 +209,7 @@ def test_decorations_must_be_a_list():
 ])
 def test_decorations_never_cover_interactive_cells(cell):
     level = read_level("level1")
-    level["stages"][0]["decorations"] = [{"sprite": "rug", "cell": cell, "footprint": [1, 1]}]
+    level["stages"][0]["decorations"] = [{"sprite": "floor_mat", "cell": cell, "footprint": [1, 1]}]
     with pytest.raises(ValueError):
         validate_level(level)
 
@@ -230,7 +230,7 @@ def test_level1_decorations_are_visual_only_and_off_the_critical_cells():
     level = read_level("level1")
     stage = level["stages"][0]
     decorations = stage["decorations"]
-    assert {d["sprite"] for d in decorations} == {"tank_chick", "tank_jelly", "plant", "rug", "grate", "wall_light"}
+    assert {d["sprite"] for d in decorations} == {"tank_a", "tank_b", "plant", "floor_mat", "floor_grate", "wall_light"}
     legend, grid = stage["legend"], stage["map"]
     # Cells in front of each door stay clear so the doorway reads and is walkable.
     in_front = {(5, 4), (5, 15)}

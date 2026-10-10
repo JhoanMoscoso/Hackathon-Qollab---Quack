@@ -83,12 +83,12 @@ test('decorations convert cell [row, col] -> [x, y] and keep sprite + footprint 
   const level = loadLevel(1);
   const v = stageView(level, 0);
   assert.equal(v.decorations.length, level.stages[0].decorations.length);
-  const tank = v.decorations.find((d) => d.sprite === 'tank_chick');
-  assert.deepEqual(tank, { sprite: 'tank_chick', cell: [7, 1], footprint: [1, 2] }); // v2 [row 1, col 7]
-  const rug = v.decorations.find((d) => d.sprite === 'rug' && d.cell[0] === 13);
-  assert.deepEqual(rug, { sprite: 'rug', cell: [13, 3], footprint: [2, 1] });
+  const tank = v.decorations.find((d) => d.sprite === 'tank_a');
+  assert.deepEqual(tank, { sprite: 'tank_a', cell: [7, 1], footprint: [1, 2] }); // v2 [row 1, col 7]
+  const mat = v.decorations.find((d) => d.sprite === 'floor_mat' && d.cell[0] === 13);
+  assert.deepEqual(mat, { sprite: 'floor_mat', cell: [13, 3], footprint: [2, 1] });
   // the input is not mutated
-  assert.deepEqual(level.stages[0].decorations.find((d) => d.sprite === 'tank_chick').cell, [1, 7]);
+  assert.deepEqual(level.stages[0].decorations.find((d) => d.sprite === 'tank_a').cell, [1, 7]);
 });
 
 test('a stage without decorations yields an empty list', () => {

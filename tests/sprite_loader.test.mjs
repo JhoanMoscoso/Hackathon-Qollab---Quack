@@ -24,6 +24,7 @@ test('loadSprites sets globalThis.SPRITES from the four data URLs', async () => 
   assert.ok(s.image && s.characters.alice && s.characters.bob);
   assert.notEqual(s.characters.alice, s.characters.bob);
   assert.equal(s.decor.frames, DECOR_FRAMES);
+  assert.deepEqual(Object.keys(s.decor.frames).sort(), ['floor_grate', 'floor_mat', 'plant', 'tank_a', 'tank_b', 'wall_light']);
   assert.ok(s.decor.image && s.decor.image !== s.image);
   assert.equal(s.decor.image.url, DECOR_URL);
   assert.equal(warns.length, 0);

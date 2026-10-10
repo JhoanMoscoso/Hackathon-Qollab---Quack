@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRenderer, drawSprite, COLORS, ON_ONE } from '../js/render.js';
 import { worldOf, l1snap, objSnap } from './helpers.mjs';
+import { DECOR_FRAMES } from '../js/sprites.js';
 
 function stubCtx() {
   const calls = [];
@@ -430,14 +431,7 @@ test('fallback: without SPRITES nothing calls drawImage and procedural shapes ar
 
 // ---------- lab decorations (separate atlas: SPRITES.decor) ----------
 const DECOR = { id: 'decor-atlas' };
-const DFRAMES = {
-  tank_chick: { x: 0, y: 0, w: 32, h: 64, footprint: [1, 2] },
-  tank_jelly: { x: 33, y: 0, w: 31, h: 64, footprint: [1, 2] },
-  plant: { x: 65, y: 0, w: 32, h: 48, footprint: [1, 2] },
-  rug: { x: 0, y: 65, w: 50, h: 32, footprint: [2, 1] },
-  grate: { x: 51, y: 65, w: 32, h: 32, footprint: [1, 1] },
-  wall_light: { x: 84, y: 65, w: 13, h: 32, footprint: [1, 1] },
-};
+const DFRAMES = DECOR_FRAMES; // the real hand-mapped V2 registry (source pixels, drawn at 2x)
 const withDecor = (fn, { decor = { image: DECOR, frames: DFRAMES }, sheet = true } = {}) => {
   globalThis.SPRITES = { ...(sheet ? { image: SHEET, frames: FRAMES, characters: { alice: ALICE, bob: BOB } } : {}), ...(decor ? { decor } : {}) };
   try { return fn(); } finally { delete globalThis.SPRITES; }
@@ -450,7 +444,7 @@ const drawL1 = (opts) => {
   return { ctx, calls, world };
 };
 
-test('decor: every level 1 decoration is drawn once from the decor atlas at its packed size, on integers', () => withDecor(() => {
+test('decor: every level 1 decoration is drawn once from the V2 atlas, source pixels scaled 2x on integers', () => withDecor(() => {
   const { ctx, calls, world } = drawL1();
   assert.equal(ctx.imageSmoothingEnabled, false);
   const drawn = decorCalls(calls);
@@ -459,21 +453,22 @@ test('decor: every level 1 decoration is drawn once from the decor atlas at its 
   for (const c of drawn) {
     const [, sx, sy, sw, sh, dx, dy, dw, dh] = c.args;
     assert.ok([dx, dy, dw, dh].every(Number.isInteger));
-    assert.deepEqual([dw, dh], [sw, sh], '1:1, no scaling at draw time');
+    assert.deepEqual([dw, dh], [sw * 2, sh * 2], 'integer 2x, nearest neighbour');
     assert.ok(Object.values(DFRAMES).some((f) => f.x === sx && f.y === sy && f.w === sw && f.h === sh));
   }
   const find = (name, cx, cy) => drawn.find((c) => c.args[1] === DFRAMES[name].x && c.args[2] === DFRAMES[name].y
-    && c.args[5] >= cx * 32 && c.args[5] < cx * 32 + 32 && c.args[6] >= cy * 32 && c.args[6] < cy * 32 + 64);
-  // bottom-centre aligned in the footprint
-  assert.deepEqual(find('tank_chick', 7, 1).args.slice(5, 9), [224, 32, 32, 64]);
-  assert.deepEqual(find('tank_jelly', 12, 1).args.slice(5, 9), [12 * 32, 32, 31, 64]);
-  assert.deepEqual(find('plant', 1, 4).args.slice(5, 9), [32, 4 * 32 + 16, 32, 48]);
-  assert.deepEqual(find('plant', 18, 4).args.slice(5, 9), [18 * 32, 4 * 32 + 16, 32, 48]);
-  assert.deepEqual(find('rug', 5, 3).args.slice(5, 9), [5 * 32 + 7, 96, 50, 32]);
-  assert.deepEqual(find('rug', 13, 3).args.slice(5, 9), [13 * 32 + 7, 96, 50, 32]);
-  assert.deepEqual(find('wall_light', 5, 0).args.slice(5, 9), [5 * 32 + 9, 0, 13, 32]);
-  assert.deepEqual(find('wall_light', 14, 0).args.slice(5, 9), [14 * 32 + 9, 0, 13, 32]);
-  assert.equal(drawn.filter((c) => c.args[1] === DFRAMES.grate.x && c.args[2] === DFRAMES.grate.y).length, 4);
+    && c.args[5] >= cx * 32 && c.args[5] < cx * 32 + 64 && c.args[6] >= cy * 32 && c.args[6] < cy * 32 + 64);
+  // bottom-centre aligned in the footprint (hand-computed from the V2 rects)
+  assert.deepEqual(find('tank_a', 7, 1).args.slice(5, 9), [7 * 32 + 9, 62, 14, 34]);
+  assert.deepEqual(find('tank_b', 12, 1).args.slice(5, 9), [12 * 32 + 10, 62, 12, 34]);
+  assert.deepEqual(find('plant', 1, 4).args.slice(5, 9), [32 + 10, 4 * 32 + 16, 12, 16]);
+  assert.deepEqual(find('plant', 18, 4).args.slice(5, 9), [18 * 32 + 10, 4 * 32 + 16, 12, 16]);
+  assert.deepEqual(find('floor_mat', 5, 3).args.slice(5, 9), [5 * 32 + 8, 3 * 32 + 20, 48, 12]);
+  assert.deepEqual(find('floor_mat', 13, 3).args.slice(5, 9), [13 * 32 + 8, 3 * 32 + 20, 48, 12]);
+  assert.deepEqual(find('wall_light', 5, 0).args.slice(5, 9), [5 * 32 + 10, 26, 12, 6]);
+  assert.deepEqual(find('wall_light', 14, 0).args.slice(5, 9), [14 * 32 + 10, 26, 12, 6]);
+  assert.equal(drawn.filter((c) => c.args[1] === DFRAMES.floor_grate.x && c.args[2] === DFRAMES.floor_grate.y).length, 4);
+  assert.deepEqual(drawn.filter((c) => c.args[1] === DFRAMES.floor_grate.x).map((c) => c.args.slice(5, 9))[0], [6 * 32 + 6, 5 * 32 + 8, 20, 24]);
 }));
 
 test('decor: draw order is floor+walls, floor details, decorations, consoles/sensors/doors/exits, players, HUD', () => withDecor(() => {
@@ -482,7 +477,7 @@ test('decor: draw order is floor+walls, floor details, decorations, consoles/sen
   const sheetFrame = (frameNames) => (c) => c.name === 'drawImage' && c.args[0] === SHEET
     && frameNames.some((n) => c.args[1] === FRAMES[n].x && c.args[2] === FRAMES[n].y);
   const lastFloorOrWall = Math.max(...idx(sheetFrame(['floor', 'wall', 'wall_center'])));
-  const isDetail = (c) => c.args[0] === DECOR && [DFRAMES.rug, DFRAMES.grate].some((f) => f.x === c.args[1] && f.y === c.args[2]);
+  const isDetail = (c) => c.args[0] === DECOR && [DFRAMES.floor_mat, DFRAMES.floor_grate].some((f) => f.x === c.args[1] && f.y === c.args[2]);
   const details = idx((c) => c.name === 'drawImage' && isDetail(c));
   const others = idx((c) => c.name === 'drawImage' && c.args[0] === DECOR && !isDetail(c));
   const objects = idx(sheetFrame(['door_1', 'door_0', 'sensor_idle', 'terminal_h', 'cnot_control', 'cnot_target', 'exit']));
@@ -526,7 +521,7 @@ test('decor: nothing is drawn without any spritesheet, and a decor-only SPRITES 
 
 test('decor: unknown sprite names and levels without decorations draw nothing extra', () => withDecor(() => {
   const world = worldOf(1);
-  world.grid.decorations = [{ sprite: 'unobtainium', cell: [3, 3], footprint: [1, 1] }, { sprite: 'grate', cell: [3, 3], footprint: [1, 1] }];
+  world.grid.decorations = [{ sprite: 'unobtainium', cell: [3, 3], footprint: [1, 1] }, { sprite: 'floor_grate', cell: [3, 3], footprint: [1, 1] }];
   const { ctx, calls } = recCtx();
   createRenderer(canvasWith(ctx)).draw(world, snap('1', '1'), view(), 0);
   assert.equal(decorCalls(calls).length, 1);
