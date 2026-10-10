@@ -68,7 +68,7 @@ test('two sensors', () => {
   const g = parseLevel(level());
   assert.deepEqual(
     [...g.sensors].sort((a, b) => a.qubit - b.qubit),
-    [{ qubit: 0, cell: [3, 4] }, { qubit: 1, cell: [16, 4] }],
+    [{ qubit: 0, cell: [3, 4] }, { qubit: 1, cell: [13, 4] }],
   );
 });
 
