@@ -44,7 +44,7 @@ export function circuitColumns(history, initialCircuit) {
 const GATE_LABEL = (c) => (c.kind === 'm' ? `M${c.outcome ?? ''}` : c.label);
 const colText = (c) => (c.kind === 'run' ? 'RUN barrier' : c.prep ? `prepared ${GATE_LABEL(c)}` : GATE_LABEL(c));
 
-/** "backend" / "local" / "mixed": where the measurement odds for the current state come from. */
+/** "backend" / "local" / "mixed": where the measurement odds come from. No longer shown in the panel (kept for its tests). */
 export function samplingLabel(snapSource, boot) {
   const src = snapSource ?? boot?.source;
   if (src === 'backend') return 'backend';
@@ -59,10 +59,11 @@ const CIRCUIT_STATUS = {
 const lockText = (unlocked) => (unlocked ? 'unlocked' : 'locked');
 
 /**
- * Status rows under the circuit. Circuit / Measurement / Exits exist only for stages with a validated
- * preparation (snap.circuit_validation, snap.measurement_enabled, snap.exits_unlocked).
+ * Status rows under the probability bars. Circuit / Measurement / Exits exist only for stages with a validated
+ * preparation (snap.circuit_validation, snap.measurement_enabled, snap.exits_unlocked). The objective is the
+ * Goal box (objectiveText), not a row.
  */
-export function statusRows(snap, boot) {
+export function statusRows(snap) {
   if (!snap) return [];
   const rows = [];
   const validation = snap.circuit_validation;
@@ -73,10 +74,46 @@ export function statusRows(snap, boot) {
     rows.push({ name: 'Measurement', value: lockText(snap.measurement_enabled) });
   }
   if (typeof snap.exits_unlocked === 'boolean') rows.push({ name: 'Exits', value: lockText(snap.exits_unlocked) });
-  rows.push({ name: 'Objective', value: snap.objective?.status ?? '-' });
-  rows.push({ name: 'Stage', value: `${(snap.stage_index ?? 0) + 1} / ${snap.stage_count ?? 1}` });
-  rows.push({ name: 'Sampling', value: samplingLabel(snap.source, boot) });
   return rows;
+}
+
+/** Next-step hint of the Bell Block protocol, by `snap.feed_forward.phase`. */
+export const FEED_FORWARD_HINTS = {
+  prepare_bob: 'Bob: apply X to q1, then measure it.',
+  measure_bob: 'Bob: measure q1 on the sensor.',
+  send_bit: 'Bob: send the measured bit to Alice (B).',
+  receive_bit: 'Alice: receive Bob’s classical bit (V).',
+  correct_alice: 'Alice: apply X only for bit 0; use Keep (I) only for bit 1 (I).',
+  measure_alice: 'Alice: measure q0 on the sensor.',
+  complete: 'Both qubits are measured. Reach the open exits.',
+};
+
+const GOAL_CHIP = { pending: 'pending', ready: 'ready ✓', failed: 'failed' };
+const PLAYER_BY_QUBIT = ['Alice', 'Bob'];
+
+/**
+ * The stage objective in plain English: { text, status } for the Goal box. `stage` is the raw level stage
+ * (win, validation, feed_forward), `snap` the engine snapshot. Pure.
+ */
+export function objectiveText(stage, snap) {
+  const status = GOAL_CHIP[snap?.objective?.status] ?? 'pending';
+  const win = stage?.win ?? {};
+  const bits = Object.keys(win).filter((k) => /^q\d+$/.test(k)).sort();
+  let text;
+  if (stage?.feed_forward) {
+    const hint = FEED_FORWARD_HINTS[snap?.feed_forward?.phase] ?? FEED_FORWARD_HINTS.prepare_bob;
+    const goal = bits.map((k) => `${PLAYER_BY_QUBIT[Number(k.slice(1))] ?? k} measures ${k} = ${win[k]}`).join(', ');
+    text = goal ? `${hint} Goal: ${goal}.` : hint;
+  } else if (stage?.validation) {
+    text = 'Build Φ⁺ = (|00⟩+|11⟩)/√2, press Space to RUN, then measure both. Matching bits open the doors.';
+  } else if (bits.length) {
+    const ket = bits.map((k) => win[k]).join('');
+    const per = bits.map((k) => `${PLAYER_BY_QUBIT[Number(k.slice(1))] ?? k} ${k} = ${win[k]}`).join(', ');
+    text = `Target |${ket}⟩: ${per}. Measure both, then reach the exits.`;
+  } else if (win.parity) {
+    text = `Measure both qubits: the two results must be ${win.parity === 'equal' ? 'equal' : 'different'}. Then reach the exits.`;
+  } else text = 'Complete the stage objective, then reach the exits.';
+  return { text, status };
 }
 
 const stateName = (snap) => snap.bell_label ?? String(snap.ket).replace(/^1(?=\|)/, ''); // engine prints a lone basis state as "1|00⟩"
@@ -227,12 +264,19 @@ function drawCircuit(svg, cols) {
 }
 
 /**
- * One debugger, two containers: the state panel (ket, bars, status, note) and the circuit panel.
- * @param {{ state: HTMLElement, circuit: HTMLElement }} roots #debugger-state and #debugger-circuit
+ * One debugger, two containers: the state panel (goal, ket, bars, status, note) and the circuit panel.
+ * @param {{ state: HTMLElement, circuit: HTMLElement }} roots #debugger-body (inside #debugger-state, which owns
+ *   the header and the key hint) and #debugger-circuit
  * @param {HTMLElement} liveEl aria-live region (#a11y-live)
  */
 export function createDebugger({ state: stateEl, circuit: circuitEl }, liveEl) {
-  const title = htmlEl('h2', 'dbg-title', 'Quantum debugger');
+  const goal = htmlEl('div', 'dbg-goal');
+  const goalHead = htmlEl('p', 'dbg-goal-head');
+  const goalLabel = htmlEl('span', 'dbg-goal-label', 'Goal');
+  const goalChip = htmlEl('span', 'dbg-goal-chip', 'pending');
+  goalHead.append(goalLabel, goalChip);
+  const goalText = htmlEl('p', 'dbg-goal-text', '');
+  goal.append(goalHead, goalText);
   const ket = htmlEl('p', 'dbg-ket');
   ket.setAttribute('aria-label', 'Quantum state');
   const bars = htmlEl('ul', 'dbg-bars');
@@ -266,7 +310,7 @@ export function createDebugger({ state: stateEl, circuit: circuitEl }, liveEl) {
   const bellEl = stat('Bell state');
   const entangledEl = stat('Entangled');
   const statusEls = {};
-  for (const name of ['Circuit', 'Measurement', 'Exits', 'Objective', 'Stage', 'Sampling']) {
+  for (const name of ['Circuit', 'Measurement', 'Exits']) {
     const dt = htmlEl('dt', null, name);
     const dd = htmlEl('dd', null, '-');
     stats.append(dt, dd);
@@ -274,7 +318,7 @@ export function createDebugger({ state: stateEl, circuit: circuitEl }, liveEl) {
   }
   const msg = htmlEl('p', 'dbg-msg');
 
-  stateEl.replaceChildren(title, ket, bars, stats, msg);
+  stateEl.replaceChildren(goal, ket, bars, stats, msg);
   circuitEl.replaceChildren(circuitTitle, circuitWrap);
   drawCircuit(svg, []);
 
@@ -293,8 +337,12 @@ export function createDebugger({ state: stateEl, circuit: circuitEl }, liveEl) {
   return {
     /** Call at the start of every user action so a repeated identical message is announced again. */
     newAction() { announcer.newAction(); },
-    update(snap, { lastMeasure = null, error = null, note = null, prev = null, sampling = null } = {}) {
+    update(snap, { lastMeasure = null, error = null, note = null, prev = null, stage = null } = {}) {
       if (snap) {
+        const objective = objectiveText(stage, snap);
+        goalText.textContent = objective.text;
+        goalChip.textContent = objective.status;
+        goalChip.dataset.status = snap.objective?.status ?? 'pending';
         ket.textContent = snap.ket;
         barData(snap.probs).forEach((b, i) => {
           barRows[i].fill.style.width = `${(b.p * 100).toFixed(1)}%`;
@@ -306,7 +354,7 @@ export function createDebugger({ state: stateEl, circuit: circuitEl }, liveEl) {
         gatesLeft.textContent = String(snap.gates_left);
         bellEl.textContent = snap.bell_label ?? 'none';
         entangledEl.textContent = snap.entangled ? 'yes' : 'no';
-        const rows = Object.fromEntries(statusRows(snap, sampling).map((r) => [r.name, r.value]));
+        const rows = Object.fromEntries(statusRows(snap).map((r) => [r.name, r.value]));
         for (const [name, { dt, dd }] of Object.entries(statusEls)) {
           dt.hidden = dd.hidden = !(name in rows);
           dd.textContent = rows[name] ?? '-';

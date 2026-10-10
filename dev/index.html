@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Entangled (dev)</title>
+<title>Quack (dev)</title>
 <link rel="stylesheet" href="../main.css">
 <script>window.backend = {};</script>
 <script type="importmap">{"imports":{"quantum.engine":"./engine_bridge.js"}}</script>
@@ -11,17 +11,15 @@
 <body>
 <!-- DEV ONLY (not uploaded to Qollab). Everything between the BODY markers must stay identical to /index.html. -->
 <!-- BODY START -->
-<button id="click-to-play" type="button">Click to play</button>
-
 <main id="app">
   <section id="loading" tabindex="-1" aria-labelledby="loading-title">
-    <h1 id="loading-title" class="screen-title">Entangled</h1>
+    <h1 id="loading-title" class="screen-title quack-title">Quack</h1>
     <p id="load-status" role="status">Loading quantum engine (Pyodide + Qiskit) and sending one circuit to the quantum backend. This can take up to 30 s.</p>
     <p class="hint">Controls: WASD or arrow keys to move, E or Enter to use a terminal, Space to run the circuit, Tab to switch character (1 player), R to reset the stage, Esc for the menu.</p>
   </section>
 
   <section id="menu" tabindex="-1" aria-labelledby="menu-title" hidden>
-    <h1 id="menu-title" class="screen-title" tabindex="-1">Entangled</h1>
+    <h1 id="menu-title" class="screen-title quack-title" tabindex="-1">Quack</h1>
     <p class="hint">A two-player quantum puzzle. Alice and Bob share one entangled state: what one measures, the other learns.</p>
     <fieldset class="level-select">
       <legend>Level</legend>
@@ -47,32 +45,41 @@
 
   <section id="game" aria-label="Game" hidden>
     <div class="board">
-      <canvas id="canvas" width="640" height="384" tabindex="0" aria-label="Entangled game board. Move with WASD or the arrow keys, use terminals with E or Enter, run the circuit with Space. The quantum debugger on the right describes the current state; the circuit you are building is in the panel below."></canvas>
+      <canvas id="canvas" width="640" height="384" tabindex="0" aria-label="Quack game board. Move with WASD or the arrow keys, use terminals with E or Enter, run the circuit with Space. The quantum debugger on the right describes the current state; the circuit you are building is in the panel below."></canvas>
     </div>
-    <aside id="debugger-state" aria-label="Quantum debugger" tabindex="0"></aside>
-    <section id="classical-console" aria-label="Bell Block classical console" hidden>
-      <h2 class="dbg-title">Classical console</h2>
-      <p id="protocol-hint" role="status"></p>
-      <p id="classical-value">Channel value: <span>hidden until Alice receives the bit</span></p>
-      <div class="protocol-actions">
-        <button id="send-bit" type="button">Bob · Send bit</button>
-        <button id="receive-bit" type="button">Alice · Receive bit</button>
-        <button id="keep-identity" type="button">Alice · Keep (I)</button>
-      </div>
-    </section>
-    <section id="core-console" aria-label="The Core gate controls" hidden>
-      <h2 class="dbg-title">The Core · gate controls</h2>
-      <p id="core-hint" role="status">Use CX together, then Alice Z/H; measure both at target 10.</p>
-      <div class="protocol-actions">
-        <button id="core-h" type="button">Alice · H (H)</button>
-        <button id="core-z" type="button">Alice · Z (Z)</button>
-        <button id="core-x" type="button">Bob · X (X)</button>
-      </div>
-    </section>
+    <div class="side">
+      <aside id="debugger-state" aria-label="Quantum debugger" tabindex="0">
+        <div class="dbg-head">
+          <h2 class="dbg-title">Quantum debugger</h2>
+          <button id="reset-btn" type="button" aria-label="Reset stage (R)">↺ Reset (R)</button>
+        </div>
+        <div id="debugger-body"></div>
+        <p id="hud-hint" class="hud-hint">Move: WASD / Arrows · E / Enter: use terminal · Space: run circuit · Tab: switch (1P) · R: reset stage · M: mute · Esc: menu</p>
+      </aside>
+      <section id="classical-console" aria-label="Bell Block classical console" hidden>
+        <h2 class="dbg-title">Classical console</h2>
+        <p id="protocol-hint" role="status"></p>
+        <p id="classical-value">Channel value: <span>hidden until Alice receives the bit</span></p>
+        <div class="protocol-actions">
+          <button id="send-bit" type="button">Bob · Send bit</button>
+          <button id="receive-bit" type="button">Alice · Receive bit</button>
+          <button id="keep-identity" type="button">Alice · Keep (I)</button>
+        </div>
+      </section>
+      <section id="core-console" aria-label="The Core gate controls" hidden>
+        <h2 class="dbg-title">The Core · gate controls</h2>
+        <p id="core-hint" role="status">Use CX together, then Alice Z/H; measure both at target 10.</p>
+        <div class="protocol-actions">
+          <button id="core-h" type="button">Alice · H (H)</button>
+          <button id="core-z" type="button">Alice · Z (Z)</button>
+          <button id="core-x" type="button">Bob · X (X)</button>
+        </div>
+      </section>
+    </div>
     <div class="bottom-panel">
       <section id="debugger-circuit" aria-label="Circuit"></section>
-      <p class="hud-hint">Move: WASD / Arrows · E / Enter: use terminal · Space: run circuit · Tab: switch (1P) · R: reset stage · M: mute · Esc: menu</p>
     </div>
+    <section id="gate-guide" aria-label="Gate guide" tabindex="0"></section>
     <div id="narrator"></div>
   </section>
 </main>

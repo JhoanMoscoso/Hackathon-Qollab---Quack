@@ -12,7 +12,9 @@ import {
 import { createInput } from './js/input.js';
 import { createRenderer } from './js/render.js';
 import { fitCanvas, debounce } from './js/layout.js';
-import { createDebugger, describeChange, hintFor } from './js/debugger.js';
+import { createDebugger, describeChange, hintFor, FEED_FORWARD_HINTS } from './js/debugger.js';
+import { renderTitle } from './js/title.js';
+import { renderGateGuide } from './js/gate_guide.js';
 import { loadSprites } from './js/sprite_loader.js';
 import { withTimeout } from './js/async_util.js';
 import { createAudio, trackForLevel, gateSfx } from './js/audio.js';
@@ -25,15 +27,6 @@ const PRECOMPUTE_SHOTS = 200;
 const PRECOMPUTE_TIMEOUT_MS = 45_000; // how long boot waits for the one backend submission before opening the menu
 const SLOW_BACKEND_NOTE = 'Quantum backend is slow — using local sampling until it finishes.';
 const $ = (id) => document.getElementById(id);
-const FEED_FORWARD_HINTS = {
-  prepare_bob: 'Bob: apply X to q1, then measure it.',
-  measure_bob: 'Bob: measure q1 on the sensor.',
-  send_bit: 'Bob: send the measured bit to Alice (B).',
-  receive_bit: 'Alice: receive Bob’s classical bit (V).',
-  correct_alice: 'Alice: apply X only for bit 0; use Keep (I) only for bit 1 (I).',
-  measure_alice: 'Alice: measure q0 on the sensor.',
-  complete: 'Both qubits are measured. Reach the open exits.',
-};
 const NOTES = {
   wrong_owner: 'This terminal belongs to the other player.',
   terminal_used: 'This terminal is used up.',
@@ -49,9 +42,10 @@ const canvas = $('canvas');
 const audio = createAudio({
   fetchTrack: async (track) => JSON.parse(await engine.load_audio.callPromising(track)),
 });
-const dbg = createDebugger({ state: $('debugger-state'), circuit: $('debugger-circuit') }, $('a11y-live'));
+const dbg = createDebugger({ state: $('debugger-body'), circuit: $('debugger-circuit') }, $('a11y-live'));
 const reduceBox = $('reduce-motion');
 reduceBox.checked = !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+document.body.classList.toggle('reduce-motion', reduceBox.checked); // CSS stops the title animation with it
 const renderer = createRenderer(canvas, { reduceMotion: reduceBox.checked });
 
 // ---------- canvas fit ----------
@@ -82,7 +76,6 @@ let input = null, mode = '1p', overlay = null, busy = false;
 let lastError = null;   // last engine error (as a short hint), shown in the debugger until the next successful call or move
 let overlayMessage;     // optional second line of the dead/win overlay
 const levelCache = new Map(); // level id -> parsed engine level (load_level runs once per id)
-let bootSampling = null;      // summary of the one boot-time precompute, shown by the debugger
 let precomputeStarted = false;
 let epoch = 0;          // bumped on every state change and level reset; async results from an older epoch are dropped
 let deathTimer = null;
@@ -134,10 +127,17 @@ function refreshProtocolConsole() {
   }
 }
 
+/** Raw level stage of the current snapshot (goal text, gate guide). */
+const currentStage = () => level?.stages?.[snap?.stage_index ?? 0] ?? null;
+
+const HUD_HINT_BASE = 'Move: WASD / Arrows · E / Enter: use terminal · Space: run circuit · Tab: switch (1P) · R: reset stage · M: mute · Esc: menu';
+const HUD_HINT_EXTRA = { level2: ' · B: send bit · V: receive bit · I: keep (identity)', level3: ' · H / Z / X: gates from the HUD' };
+const setHudHint = (levelId) => { $('hud-hint').textContent = HUD_HINT_BASE + (HUD_HINT_EXTRA[levelId] ?? ''); };
+
 const refresh = (note = null, prev = null) => {
   if (world && snap) syncTerminalUses(world, snap); // engine is the source of truth for terminal uses
   refreshProtocolConsole();
-  dbg.update(snap, { lastMeasure, note, error: lastError, prev, sampling: bootSampling });
+  dbg.update(snap, { lastMeasure, note, error: lastError, prev, stage: currentStage() });
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -154,12 +154,8 @@ async function precomputeOnce() {
   if (precomputeStarted) return;
   precomputeStarted = true;
   if (typeof backend === 'undefined' || !backend) return;
-  const out = await call('precompute', backend, PRECOMPUTE_SHOTS);
-  const failure = lastError;
-  lastError = null;
-  bootSampling = out
-    ? { source: out.source, backend: out.backend, submitted_states: out.submitted_states, reason: out.reason }
-    : { source: 'statevector_fallback', backend: null, submitted_states: 0, reason: failure };
+  await call('precompute', backend, PRECOMPUTE_SHOTS);
+  lastError = null; // a failed submission is non-fatal: sampling stays local and nothing is shown
 }
 
 /** Flat stage view -> grid -> world for the snapshot's current stage. */
@@ -196,7 +192,7 @@ const sm = createStateMachine({
     if (next === 'menu') { input?.dispose(); input = null; audio.playMusic('menu'); }
     if (next === 'level') showMenuError(null);
     if (SCREENS[next] === 'game') fitCanvasToBoard(true);
-    if ($('click-to-play').hidden) focusTarget().focus();
+    focusTarget().focus();
   },
 });
 
@@ -227,6 +223,8 @@ async function startGame(chosen) {
     overlayMessage = undefined;
     newInput();
     sm.setState(STATES.LEVEL);
+    setHudHint(id);
+    renderGateGuide($('gate-guide'), currentStage());
     audio.playMusic(trackForLevel(id));
     refresh(`${lvl.title ?? id} started.`);
   } finally { busy = false; refreshProtocolConsole(); }
@@ -296,6 +294,7 @@ async function handleComplete(ep) {
     snap = s; lastMeasure = null;
     try { buildWorld(); } catch (e) { sm.setState(STATES.MENU); showMenuError(e.message); return; }
     newInput();
+    renderGateGuide($('gate-guide'), currentStage());
     refresh(`Stage ${done + 1} complete. Stage ${done + 2}: ${level.stages?.[snap.stage_index]?.title ?? ''}`);
     return;
   }
@@ -463,12 +462,17 @@ $('keep-identity').addEventListener('click', () => queueProtocol('identity'));
 $('core-h').addEventListener('click', () => queueCoreGate('h', 0, 'alice_h', 'alice'));
 $('core-z').addEventListener('click', () => queueCoreGate('z', 0, 'alice_z', 'alice'));
 $('core-x').addEventListener('click', () => queueCoreGate('x', 1, 'bob_x', 'bob'));
-reduceBox.addEventListener('change', () => renderer.setReduceMotion(reduceBox.checked));
-$('click-to-play').addEventListener('click', (e) => {
-  audio.play('click');
-  e.currentTarget.hidden = true;
-  focusTarget().focus();
+reduceBox.addEventListener('change', () => {
+  renderer.setReduceMotion(reduceBox.checked);
+  document.body.classList.toggle('reduce-motion', reduceBox.checked);
 });
+$('reset-btn').addEventListener('click', () => {
+  canvas.focus(); // Space (run circuit) on a focused button would press it again
+  if (sm.state === 'level' && !busy) restartStage();
+});
+
+renderTitle($('loading-title'));
+renderTitle($('menu-title'));
 
 (async () => {
   requestAnimationFrame(frame);
