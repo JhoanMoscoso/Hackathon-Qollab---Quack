@@ -114,6 +114,8 @@ Para precompute se deduplican vectores por `canonical_key`; para verificar accio
 ### E7 — Rendimiento del puente JS↔Python (proyecto JS junto con Jhoan, H+4)
 Mide con `performance.now()` en JS el coste de `apply_gate` y `measure`. Objetivo < 20 ms. Si `Statevector` de 3 qubits tarda más, cachea por `state_key`.
 
+**Estado: validado para el caso de dos qubits medido.** Juanjo ejecutó `Q-Quack bridge test` en built-in y Forte; ambos reportaron `target_20ms_met: true`. p95: X de Bob 1.20 ms en ambos, medir Alice 1.50 ms built-in / 1.40 ms Forte. Tres warm-ups, veinte muestras por operación, llamada JS→Python→JSON sin render y sin precompute. Resultados completos y límites en §8. No hace falta agregar optimizaciones de caché por este resultado; GHZ/tres qubits no se midió.
+
 ## 2. Definición de los niveles (para E5/E6 y para `levels/*.json`)
 
 Convención: `q0` = Alice, `q1` = Bob. Objetos: `open_on` = valor que lo deja pasar; `lethal` = pisarlo en el otro valor mata.
@@ -169,7 +171,7 @@ H+n significa n horas desde el arranque: son metas originales, no entregas ya cu
 
 ## 6. Evidencia acumulada y siguiente paso
 
-Fuente: salidas de consola/capturas compartidas por Juanjo el 2026-10-09; proyecto **Q-Quack py**. Tiempos son los mostrados por la UI, incluyen runtime y **no aíslan** `backend.run` ni la proyección. Versiones exactas y IDs de Runs todavía no registrados. Engram conserva el detalle; esta tabla es el resumen compartido, sin crear otra bitácora Markdown por ahora.
+Fuente: salidas de consola/capturas compartidas por Juanjo el 2026-10-09 y reportes E7 del 2026-10-10; proyectos **Q-Quack py** y **Q-Quack bridge test**. Los tiempos UI incluyen runtime y **no aíslan** `backend.run` ni la proyección; E7 tiene mediciones separadas en §8. Versiones exactas del runtime e IDs de Runs todavía no registrados. Engram conserva el detalle; este archivo es el resumen compartido, sin crear otra bitácora Markdown.
 
 | Prueba | Backend / nº circuitos enviados | Resultado | Tiempo UI |
 |---|---|---|---|
@@ -202,9 +204,9 @@ En la segunda ejecución individual de Forte, 3/200 shots (1.5 %) quedaron fuera
 2. **E1 completado:** conservar evidencia de amplitudes, labels, fase global y no Bell; no hace falta repetirlo para avanzar a E3.
 3. **E3 completado experimentalmente:** proyección q0/q1, producto/ramas imposibles, `evolve`, entropía y ket con signos/imaginarios ya pasaron. Avanzar a E4; no es necesario repetir estas pruebas ni interpretarlas como reglas de gameplay implementadas.
 4. **Snapshot entregado:** `docs/snapshot-example.json` reproduce el resultado real de `new_session("level2")` y tiene test de igualdad contra la API. Jhoan puede construir su mock y adaptar el render a etapas/fuentes v2.
-5. **Motor y E5/E6 implementados:** después de autorización explícita de Juanjo. Validación de todas las recetas del catálogo pasó localmente; E7 y el bootstrap completo en Qollab/JS permanecen pendientes. No hace falta seguir repitiendo E4 básico.
+5. **Motor y E5/E6 implementados:** validación de recetas del catálogo pasó localmente. Motor real pasó en Qollab Python y el diagnóstico JS/E7 también pasó en ambos backends. Sigue pendiente adaptar y recorrer el frontend del juego; no repetir E4 básico ni E7 sin una regresión o cambio de escenario.
 
-**Balance:** E1/E3 y E4 básico completados experimentalmente; E2 fundamenta el modo individual + fallback, con benchmarks 30/60 bloqueados/no realizados; E5/E6 ejecutados localmente; E7 pendiente. No confundir E1–E4 del handoff con Fases 1–4 del plan: el exit gate F0 exige canvas + counts vía puente JS/Python y sigue pendiente de demostrar en el juego.
+**Balance:** E1/E3/E4 básico validados; E2 rechazó listas y la solución de pack único ya pasó en ambos backends (30/60 listas no realizados); E5/E6 ejecutados localmente; **E7 validado en el diagnóstico de dos qubits**. Falta walkthrough del juego y confirmar explícitamente movimiento/foco del canvas. E1–E7 no son Fases 1–7: el MD 01 tiene exit gates propios, no se aprueban automáticamente por estas mediciones.
 
 ## 7. Entrega implementada para Jhoan
 
@@ -278,7 +280,7 @@ Validación final de entrega local: **111 tests pasaron**, sin skips; CLI `quant
 
 1. **Probe Python completo pasó en ambos.** Compartir resultados con Jhoan y consumir snapshot v2; no hace falta repetir los experimentos previos para avanzar.
 2. En proyecto JS, validar `callPromising`, stage/reset, cola de acciones, terminales/CX, salidas y recorrido de los mapas. Esto cierra el trabajo F0/F1 según exit gates del MD 01.
-3. E7: medir puente JS↔Python; no hay aún benchmark <20 ms ni garantía 60 fps.
+3. **E7 cumplió <20 ms en ambos backends en el arnés**; usar métricas §8 en el debugger/texto de entrega. No asumir 60 fps ni todas las operaciones/escenarios cubiertos.
 4. Probar un IBM noise model si disponible y revisar cómo se presenta mezcla/fallback/filtrado. El modo por defecto es conservador para cualquier backend; batch es opt-in solo en los compatibles.
 
 ### Integración de main — conflictos Git versus contrato de gameplay
@@ -287,15 +289,15 @@ Se incorporó el frontend de Jhoan desde `main` y se combinó `.gitignore` sin q
 
 Después de resolver el merge pasaron **111 tests Python y 124 tests JS**, sin fallos ni skips. Esto confirma que se preservan ambos componentes por separado, no una ejecución integrada del frontend con el backend Python en Qollab.
 
-### Próxima entrega del handoff: E7 y texto técnico
+### Entrega del handoff: E7 y texto técnico
 
 - `dev/qollab-bridge/` contiene un diagnóstico **separado**, no reemplaza el frontend de Jhoan: llama a la fachada con `callPromising`, recibe counts, permite mover un cuadrado y mide eventos gates/measure/snapshot.
 - Cargar sus archivos como `index.html`, `main.js`, `probe.js`, `main.css`, `requirements.txt` en la raíz de un proyecto JS de prueba, junto a `quantum/`, `levels/` y el OGG. No modificar el proyecto Python ya validado. Referencia oficial: https://qollab.xyz/learn/docs/js-qiskit-projects.
 - El diagnóstico hace un solo precompute; excluye su tiempo de E7. Tres iteraciones de calentamiento, veinte muestras por operación; reporta p50/p95/máximo de llamada+JSON, sin DOM/render. Si p95 gates/medición excede 20 ms, E7 no alcanza el objetivo: registrar y optimizar con evidencia.
-- Ese proyecto puede demostrar F0 básico (canvas/teclado/counts) y E7, pero no el exit gate F1 del juego completo con colisiones, ambos terminales CX y modos 1P/2P. No dar esos gates por aprobados hasta que se ejecuten.
+- El proyecto ya demostró puente/counts/E7 en ambos. El usuario aún no confirmó movimiento/foco del canvas; falta ese chequeo para F0 básico. No demuestra el exit gate F1 del juego completo con colisiones, terminal CX y 1P/2P.
 - Después, entregar a Samuel el texto técnico en inglés de aproximadamente 300 palabras basado en evidencia, y cerrar con Jhoan la adaptación v2 y los recorridos.
 
-Validación del diagnóstico preparado: tres tests nuevos de JS verifican llamada async/errores JSON, percentiles y un solo precompute con veinte muestras tras calentamiento. Suite actual **111 tests Python + 127 tests JS** pasó. Esto valida el arnés, no proporciona todavía los tiempos reales E7.
+Validación del diagnóstico: tres tests de JS cubren llamada async/errores JSON, percentiles y un solo precompute con veinte muestras tras calentamiento. Suite **111 tests Python + 127 tests JS** pasó; los tiempos reales, distintos de esos tests, están en §8.
 
 ### Texto técnico para Samuel — borrador basado en evidencia
 
@@ -309,4 +311,45 @@ El bloque siguiente está entregado para edición, no implica que el juego JS es
 >
 > The complete Python probe passed on Qollab's built-in simulator and IonQ Forte 1 simulator. Local verification enumerated twenty-one physical states and confirmed the intended level strategies, including a three-gate deterministic core solution. Without gameplay CNOT, that core's best success probability is one half. The independent opening stage intentionally remains probabilistic.
 >
-> Backend statistics remain separate from ideal state probabilities. Impossible outcomes are filtered or sampled locally with diagnostics, so this is not a continuous noisy hardware trajectory. The JavaScript bridge, complete gameplay walkthrough, and event-latency measurements remain explicit integration checks.
+> Backend statistics remain separate from ideal probabilities; incompatible outcomes are filtered or sampled locally with diagnostics. This is not a continuous noisy hardware trajectory. A separate Qollab JavaScript probe measured gate and measurement p95 latency at or below 1.5 milliseconds on both tested backends; the complete gameplay walkthrough remains an integration check.
+
+## 8. E7 real — resultados y cierre de la entrega de Juanjo
+
+Fuente: reportes JSON de **Q-Quack bridge test** enviados por Juanjo, 2026-10-10. Caso: L2/opposites, X(q1), medir q0 y snapshot. Se excluyen tres iteraciones de calentamiento; veinte muestras por operación. Percentiles nearest-rank: p95 es la muestra 19 de 20 ordenadas. Cronómetro desde antes de `callPromising` hasta después de `JSON.parse`: incluye puente, ejecución Python y serialización/deserialización, **no render/DOM ni precompute**. No es un benchmark de todas las gates/etapas/dispositivos.
+
+| Backend | Operación | Muestras | p50 ms | p95 ms | Máximo ms |
+|---|---|---|---|---|---|
+| Built-in (24q) | `apply_gate("x",1)` | 20 | 0.90 | 1.20 | 1.50 |
+| Built-in (24q) | `measure(0)` | 20 | 1.00 | 1.50 | 1.70 |
+| Built-in (24q) | `snapshot()` | 20 | 0.50 | 1.00 | 1.10 |
+| Forte 1 simulator (29q) | `apply_gate("x",1)` | 20 | 0.90 | 1.20 | 2.30 |
+| Forte 1 simulator (29q) | `measure(0)` | 20 | 0.90 | 1.40 | 2.80 |
+| Forte 1 simulator (29q) | `snapshot()` | 20 | 0.40 | 0.60 | 0.80 |
+
+Objetivo: p95 de gates/medición **<20 ms**, alcanzado en ambas ejecuciones. Incluso los máximos observados quedaron debajo de 3 ms. No se necesita optimizar o agregar caches basándose en estas muestras; rendimiento de render, cargas concurrentes, otras operaciones y tres qubits requieren pruebas propias si se incorporan.
+
+### Arranque separado de la interacción
+
+| Backend | Tiempo total UI | Llamada `precompute` desde JS | Ejecución de circuito reportada |
+|---|---|---|---|
+| Built-in | 12.5 s | 1548.4 ms (1.5484 s) | No reportada |
+| Forte | 22.7 s | 16003.4 ms (16.0034 s) | 1000 ms |
+
+`precompute_ms` comprende construcción del catálogo/preparaciones, sampling fallback, envío/espera, decodificación y respuesta JSON; no aislarlo como tiempo de red o de circuito. La línea 1000 ms es la métrica que imprime la plataforma, no latencia JS ni tiempo total. Pantalla de carga necesaria; **después del arranque los eventos reutilizan counts y evolucionan/proyectan localmente**, sin un nuevo job por gate/medición/reset. Es la razón arquitectónica de que Forte pueda tener un arranque de ~16 s para precompute y eventos de ~1 ms, no que el cloud esté respondiendo en 1 ms por medición.
+
+Ambos reportes: `states:21`, `circuits:1`, `strategy:packed`, `submitted_states:10`, `backend_states:10`, `source:mixed`, `shots:200`, `reason:null`. Medidas de comprobación: built-in Alice=0/Bob=1, Forte Alice=1/Bob=0, ambas fuentes backend y objetivo satisfecho. No hubo fallback por fallo remoto.
+
+### Counts Bell y límites del ruido
+
+- Built-in: `00:102,11:98`, total 200; soporte ideal de Φ⁺.
+- Forte: `00:110,11:87,10:1,01:2`, total 200; tres shots (1.5 %) fuera del soporte ideal.
+- Ese 1.5 % es incompatibilidad observada de **este par** en un simulador remoto, no tasa global de error ni medición de hardware real. Medir en Z no identifica todos los errores de fase. El muestreo posterior sigue las reglas de estado ideal/filtrado documentadas, no una trayectoria física ruidosa.
+- El histograma de veinte bits es el job empaquetado completo, no los dos qubits del nivel; para debugger usar marginal de `sampling.counts` del estado.
+
+### Qué sigue, sin más experimentos redundantes
+
+1. Conservar los dos proyectos de prueba y sus salidas. Confirmar en el JS: clic/foco y mover el cuadrado con teclado en ambos backends; esta acción visual no aparece en el JSON.
+2. Jhoan adapta su frontend `test`/v1 al contrato real v2: elegir etapa, convertir coordenadas, pasar/consumir terminales y CX, tratar indicadores L1/no blocking, comprobar objetivo y ambas salidas, y reset/advance. Juanjo valida junto a él, no reescribe el juego a ciegas.
+3. Ejecutar el exit gate F1 del MD 01 con interfaz real: H de Alice, X de Bob, CX coordinada, medición/debugger, muerte/reset y 1P/2P; luego recorrer las cinco etapas para F2/F3. Un reporte de E7 no sustituye eso.
+4. Acordar presupuesto de entidades L2/opposites y L3, y regla propuesta de glitches. IBM noise model es prueba adicional pendiente antes de entrega final, no bloqueo de E7.
+5. Samuel recibe el borrador técnico actualizado de §7 con métricas E7 verificadas. Los entregables de código/snapshot/E1–E7 de Juanjo quedan registrados; integración espacial/juego completo sigue siendo trabajo conjunto.
