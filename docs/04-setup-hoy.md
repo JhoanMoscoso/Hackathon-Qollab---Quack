@@ -91,7 +91,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install "qiskit>=2.5.2,<3" numpy pytest
 pytest quantum/tests
 ```
-El juego completo solo corre en Qollab (necesita `backend`). Para desarrollar JS localmente sin Pyodide: `js/mock_engine.js` que implemente la misma API con respuestas fijas (Jhoan). Esto desacopla a Jhoan de Juanjo.
+El juego completo solo corre en Qollab con su `backend` real. Para desarrollar localmente sin Pyodide: `.venv/bin/python dev/engine_server.py` y abrir `http://localhost:8000/dev/` (corre el motor Python/Qiskit real; muestreo local, sin backend).
 
 ## 4. Checklist de entrega (Samuel, Fase 4)
 

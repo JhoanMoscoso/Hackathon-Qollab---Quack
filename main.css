@@ -58,6 +58,11 @@ button:hover { border-color: var(--alice); }
 }
 #click-to-play:focus-visible { outline-offset: -8px; }
 
+.level-select { border: 2px solid var(--border); border-radius: 6px; padding: 8px 16px 12px; margin: 16px 0 0; max-width: 28rem; }
+.level-select legend { padding: 0 6px; font-weight: 600; }
+.level-select label { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; }
+.level-select input { width: 18px; height: 18px; accent-color: var(--alice); }
+
 .menu-actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
 #start-1p { border-color: var(--alice); }
 #start-2p { border-color: var(--bob); }
@@ -69,6 +74,9 @@ button:hover { border-color: var(--alice); }
 #load-status { font-size: 1.1rem; }
 
 #game { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+
+.board { flex: 0 1 640px; width: 100%; max-width: 640px; min-width: 0; }
+.hud-hint { margin: 8px 0 0; color: var(--muted); font-size: 0.85rem; }
 
 #canvas {
   display: block;
@@ -92,6 +100,7 @@ button:hover { border-color: var(--alice); }
 .dbg-bar-track { display: block; height: 14px; background: var(--panel-2); border: 1px solid var(--border); }
 .dbg-bar-fill { display: block; height: 100%; width: 0; background: var(--alice); }
 .dbg-bar-pct { text-align: right; }
+.dbg-bar.is-changed { outline: 2px solid var(--focus); outline-offset: 1px; background: var(--panel-2); }
 
 .dbg-circuit-wrap { overflow-x: auto; max-width: 100%; }
 .dbg-circuit { display: block; max-width: none; flex: none; } /* natural size, never shrunk */
@@ -104,6 +113,10 @@ button:hover { border-color: var(--alice); }
 .c-dot { fill: var(--text); }
 .c-xor { fill: var(--panel); stroke: var(--text); stroke-width: 2; }
 .c-xor-line { stroke: var(--text); stroke-width: 2; }
+.c-prep { opacity: 0.55; } /* prepared by the level, not played by the players */
+.c-prep .c-box, .c-prep .c-xor { stroke-dasharray: 3 2; }
+.c-run { stroke: var(--super); stroke-width: 2; stroke-dasharray: 4 3; }
+.c-run-text { fill: var(--super); font: bold 9px var(--mono); }
 
 .dbg-stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 12px 0 0; }
 .dbg-stats dt { color: var(--muted); }

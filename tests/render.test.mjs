@@ -127,6 +127,41 @@ test('measured sensor: label full alpha and check mark drawn', () => {
   assert.ok(lineTos(done) > lineTos(run([null, null])));
 });
 
+test('cnot: cable only between adjacent cells, otherwise a CX label on each cell', () => {
+  const count = (world, name) => {
+    const ctx = stubCtx();
+    createRenderer(canvasWith(ctx)).draw(world, l3snap(), view(), 0);
+    return ctx.calls.filter((c) => c[0] === name || (c[0] === 'fillText' && c[1] === name)).length;
+  };
+  const near = worldOf(1);
+  assert.equal(count(near, 'CX'), 0, 'L1 niche: adjacent, no labels');
+  const far = worldOf(3);
+  assert.deepEqual(far.cnot.control.map((v, i) => Math.abs(v - far.cnot.target[i])).reduce((a, b) => a + b) > 1, true);
+  assert.equal(count(far, 'CX'), 2, 'L3: far apart, one label per cell');
+});
+
+test('joint lock: closed ("1") draws a lock; blocking:false doors are indicators without hazard border', () => {
+  const lineDashes = (ctx) => ctx.calls.filter((c) => c[0] === 'setLineDash' && c[1].length === 2).length;
+  const arcs = (world, state) => {
+    const ctx = stubCtx();
+    createRenderer(canvasWith(ctx)).draw(world, snap(state, state), view(), 0);
+    return ctx.calls.filter((c) => c[0] === 'arc').length;
+  };
+  const world = worldOf(1);
+  assert.ok(arcs(world, '1') > arcs(world, '0'), 'lock shackle only while closed');
+  const dashes = (blocking) => {
+    const flat = worldOf(1);
+    flat.doors.forEach((d) => { d.blocking = blocking; d.lethal = true; });
+    const ctx = stubCtx();
+    createRenderer(canvasWith(ctx)).draw(flat, snap('1', '1'), view(), 0);
+    return { dashes: lineDashes(ctx), one: ctx.calls.some((c) => c[0] === 'fillText' && c[1] === '1') };
+  };
+  const solid = dashes(true);
+  const indicator = dashes(false);
+  assert.equal(solid.dashes - indicator.dashes, 2, 'two lethal doors lose their dashed hazard border');
+  assert.ok(indicator.one, 'indicator still shows the 1 glyph');
+});
+
 // ---------- sprite path (fake SPRITES, recording context) ----------
 // Records every call with the globalAlpha in force at that moment.
 function recCtx() {

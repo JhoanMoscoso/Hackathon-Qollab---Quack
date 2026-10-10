@@ -207,13 +207,67 @@ function drawDoorSprite(ctx, door, snap, state, x, y, t, reduceMotion) {
   }
 }
 
+/** Padlock glyph centered on (cx, cy): joint locks are shut ("1") until the stage objective is met. */
+function drawLock(ctx, cx, cy, color) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy - 2, 5, Math.PI, 0); // shackle
+  ctx.stroke();
+  ctx.fillRect(cx - 7, cy - 2, 14, 10); // body
+  ctx.restore();
+}
+
+/**
+ * Non-blocking door: a small floor indicator (thin frame, no hazard border) that only mirrors the
+ * snapshot state. State still reads without color: "0" / "1" / "?" glyphs.
+ */
+function drawIndicator(ctx, door, state, x, y) {
+  const cx = x + CELL / 2;
+  const cy = y + CELL / 2;
+  const inset = 8;
+  const size = CELL - inset * 2;
+  ctx.save();
+  if (state === '0') {
+    ctx.strokeStyle = COLORS.zero;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + inset + 0.5, y + inset + 0.5, size - 1, size - 1);
+    ctx.restore();
+    text(ctx, '0', cx, cy, { size: 11, color: COLORS.zero });
+  } else if (state === '1') {
+    ctx.fillStyle = COLORS.one;
+    ctx.fillRect(x + inset, y + inset, size, size);
+    ctx.restore();
+    text(ctx, '1', cx, cy, { size: 11, color: ON_ONE });
+  } else {
+    ctx.fillStyle = '#1B1430';
+    ctx.fillRect(x + inset, y + inset, size, size);
+    ctx.strokeStyle = COLORS.superpos;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + inset + 0.5, y + inset + 0.5, size - 1, size - 1);
+    ctx.restore();
+    text(ctx, '?', cx, cy, { size: 11, color: '#FFFFFF' });
+  }
+}
+
 function drawDoor(ctx, door, snap, t, reduceMotion) {
   const x = px(door.x);
   const y = px(door.y);
   const state = snap.objects?.[door.name];
   const cx = x + CELL / 2;
   const cy = y + CELL / 2;
-  if (hasSprite(`door_${state}`)) drawDoorSprite(ctx, door, snap, state, x, y, t, reduceMotion);
+  if (door.blocking === false) return drawIndicator(ctx, door, state, x, y);
+  const joint = door.qubit === undefined; // bound to the stage objective, not to a qubit: shown as a lock
+  if (hasSprite(`door_${state}`)) {
+    drawDoorSprite(ctx, door, snap, state, x, y, t, reduceMotion);
+    if (joint && state === '1') {
+      ctx.fillStyle = 'rgba(14, 17, 22, 0.75)'; // plate so the lock reads on top of the art
+      ctx.fillRect(cx - 10, cy - 10, 20, 20);
+      drawLock(ctx, cx, cy, COLORS.text);
+    }
+  }
   else {
     if (state === '0') {
       ctx.strokeStyle = COLORS.zero;
@@ -224,8 +278,11 @@ function drawDoor(ctx, door, snap, t, reduceMotion) {
       ctx.fillStyle = COLORS.one;
       ctx.fillRect(x + 2, y + 2, CELL - 4, CELL - 4);
       // Pure black on #D64550 = 4.83:1 (white would be 4.35:1, below the 4.5:1 text minimum).
-      line(ctx, x + 8, y + 8, x + CELL - 8, y + CELL - 8, ON_ONE, 3);
-      line(ctx, x + CELL - 8, y + 8, x + 8, y + CELL - 8, ON_ONE, 3);
+      if (joint) drawLock(ctx, cx, cy + 1, ON_ONE);
+      else {
+        line(ctx, x + 8, y + 8, x + CELL - 8, y + CELL - 8, ON_ONE, 3);
+        line(ctx, x + CELL - 8, y + 8, x + 8, y + CELL - 8, ON_ONE, 3);
+      }
       text(ctx, '1', x + CELL - 7, y + 8, { size: 10, color: ON_ONE });
     } else {
       const shift = reduceMotion ? 0 : (Math.floor(t / 250) % 4) * 2; // 4 fps
@@ -297,7 +354,9 @@ function drawCnot(ctx, cnot) {
   const cy = px(cyCell) + CELL / 2;
   const tx = px(txCell) + CELL / 2;
   const ty = px(tyCell) + CELL / 2;
-  line(ctx, cx, cy, tx, ty, COLORS.centerEdge, 4); // cable
+  // The cable only makes sense between neighbouring cells (the wall niche); far apart, each cell carries a CX label.
+  const adjacent = Math.abs(cxCell - txCell) + Math.abs(cyCell - tyCell) === 1;
+  if (adjacent) line(ctx, cx, cy, tx, ty, COLORS.centerEdge, 4); // cable
   if (!drawSprite(ctx, 'cnot_control', px(cxCell), px(cyCell))) {
     circle(ctx, cx, cy, 7, { fill: COLORS.alice });
     circle(ctx, cx, cy, 10, { stroke: COLORS.text, width: 1 });
@@ -306,6 +365,10 @@ function drawCnot(ctx, cnot) {
     circle(ctx, tx, ty, 10, { fill: '#0E1116', stroke: COLORS.bob, width: 2 });
     line(ctx, tx - 10, ty, tx + 10, ty, COLORS.bob, 2);
     line(ctx, tx, ty - 10, tx, ty + 10, COLORS.bob, 2);
+  }
+  if (!adjacent) {
+    text(ctx, 'CX', cx, px(cyCell) + CELL - 4, { size: 8 });
+    text(ctx, 'CX', tx, px(tyCell) + CELL - 4, { size: 8 });
   }
 }
 
