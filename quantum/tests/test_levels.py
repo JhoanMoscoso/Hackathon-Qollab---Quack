@@ -79,16 +79,50 @@ def test_terminal_bad_owner_gate_use_and_target_rejected(level):
             validate_level(bad)
 
 
-def test_audio_is_base64_when_available_and_missing_is_graceful(tmp_path, monkeypatch):
-    from quantum.engine import load_audio
-    monkeypatch.chdir(tmp_path)
-    assert json.loads(load_audio())["code"] == "AUDIO_UNAVAILABLE"
-    (tmp_path / "audio").mkdir()
-    (tmp_path / "audio" / "soundtrack.ogg").write_bytes(b"OggS-test")
-    data = audio_payload()
+TRACK_FILES = {"menu": "fondo_inicio.ogg", "level1": "fondo_1.ogg", "level2": "fondo_2.ogg"}
+
+
+@pytest.mark.parametrize("track", sorted(TRACK_FILES))
+def test_every_track_is_base64_ogg_from_its_own_file(track):
+    import base64
+    data = audio_payload(track)
     assert data["encoding"] == "base64"
     assert data["mime"] == "audio/ogg"
-    assert isinstance(data["data"], str)
+    raw = base64.b64decode(data["data"], validate=True)
+    assert raw[:4] == b"OggS"
+    with open(f"audio/{TRACK_FILES[track]}", "rb") as handle:
+        assert raw == handle.read()
+
+
+def test_default_track_is_the_menu_track():
+    assert audio_payload() == audio_payload("menu")
+
+
+@pytest.mark.parametrize("track", ["soundtrack", "", "../levels/level1", None, 3, "MENU", "level3"])
+def test_unknown_track_is_rejected_with_invalid_track(track):
+    from quantum.engine import load_audio
+    result = json.loads(load_audio(track))
+    assert result["code"] == "INVALID_TRACK"
+    assert "data" not in result
+    with pytest.raises(ValueError):
+        audio_payload(track)
+
+
+def test_audio_missing_asset_is_graceful(tmp_path, monkeypatch):
+    from quantum.engine import load_audio
+    monkeypatch.chdir(tmp_path)
+    assert json.loads(load_audio("menu"))["code"] == "AUDIO_UNAVAILABLE"
+    assert json.loads(load_audio())["code"] == "AUDIO_UNAVAILABLE"
+
+
+def test_audio_over_2mb_is_rejected(tmp_path, monkeypatch):
+    from quantum.engine import load_audio
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "audio").mkdir()
+    (tmp_path / "audio" / "fondo_1.ogg").write_bytes(b"OggS" + b"\0" * (2 * 1024 * 1024))
+    assert json.loads(load_audio("level1"))["code"] == "AUDIO_UNAVAILABLE"
+    (tmp_path / "audio" / "fondo_1.ogg").write_bytes(b"OggS" + b"\0" * 1024)
+    assert json.loads(load_audio("level1"))["mime"] == "audio/ogg"
 
 
 # ---- decorations: purely visual layer, validated but never read by the engine ----
