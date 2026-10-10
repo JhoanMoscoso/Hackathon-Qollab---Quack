@@ -1,0 +1,3 @@
+# Runtime libraries for Qollab; development/test dependencies live in requirements-dev.txt.
+qiskit>=2.5.2,<3
+numpy>=2,<3

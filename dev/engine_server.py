@@ -31,6 +31,7 @@ from quantum import engine  # noqa: E402
 ALLOWED = (
     "load_level", "new_session", "precompute", "apply_gate", "measure",
     "reset_level", "reset_stage", "advance_stage", "snapshot", "load_audio", "run_circuit",
+    "send_bit", "receive_bit", "confirm_identity",
 )
 
 MAX_BODY = 64 * 1024

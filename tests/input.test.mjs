@@ -174,6 +174,20 @@ test('preventDefault for Tab and arrows, not for unhandled keys', () => {
   assert.equal(q.prevented, false);
 });
 
+test('native controls and Shift+Tab from the canvas keep browser keyboard behavior', () => {
+  const { target, input } = setup();
+  for (const tagName of ['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA']) {
+    const event = key('Space', { target: { tagName } });
+    target.fire('keydown', event);
+    assert.equal(event.prevented, false, tagName);
+  }
+  const backTab = key('Tab', { shiftKey: true, target: { tagName: 'CANVAS' } });
+  target.fire('keydown', backTab);
+  assert.equal(backTab.prevented, false);
+  assert.equal(input.active, 'alice');
+  assert.deepEqual(input.poll(), []);
+});
+
 test('dispose removes listeners', () => {
   const { target, input } = setup();
   input.dispose();

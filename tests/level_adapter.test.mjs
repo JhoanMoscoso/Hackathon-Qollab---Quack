@@ -57,11 +57,11 @@ test('level3 converts every terminal, including unlimited-use ones kept as null'
   assert.deepEqual(l3.terminals.map((t) => [t.id, ...t.cell]), [
     ['alice_h', 3, 1], ['alice_z', 4, 2], ['bob_x', 11, 1], ['shared_cx', 4, 5],
   ]);
-  assert.deepEqual(l3.terminals.find((t) => t.id === 'shared_cx').target_cell, [12, 5]);
-  const l2b = stageView(loadLevel(2), 1);
-  assert.equal(l2b.stageId, 'feed_forward');
-  assert.equal(l2b.terminals[0].uses, null);
-  assert.deepEqual(l2b.terminals[0].cell, [10, 1]);
+  assert.deepEqual(l3.terminals.find((t) => t.id === 'shared_cx').target_cell, [15, 3]);
+  const l2b = stageView(loadLevel(2), 0);
+  assert.equal(l2b.stageId, 'bell_block');
+  assert.equal(l2b.terminals[0].uses, 1);
+  assert.deepEqual(l2b.terminals[0].cell, [2, 5]);
 });
 
 test('the source level is not mutated', () => {
@@ -73,8 +73,9 @@ test('the source level is not mutated', () => {
 
 test('multi-stage level: picks the requested stage', () => {
   const level = loadLevel(2);
-  assert.equal(stageView(level, 0).stageId, 'opposites');
-  assert.equal(stageView(level, 1).stageId, 'feed_forward');
+  level.stages.push({ ...level.stages[0], id: 'second_fixture' });
+  assert.equal(stageView(level, 0).stageId, 'bell_block');
+  assert.equal(stageView(level, 1).stageId, 'second_fixture');
 });
 
 test('bad stage index throws a clear error', () => {

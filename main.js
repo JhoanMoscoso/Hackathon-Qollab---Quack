@@ -25,6 +25,15 @@ const PRECOMPUTE_SHOTS = 200;
 const PRECOMPUTE_TIMEOUT_MS = 45_000; // how long boot waits for the one backend submission before opening the menu
 const SLOW_BACKEND_NOTE = 'Quantum backend is slow — using local sampling until it finishes.';
 const $ = (id) => document.getElementById(id);
+const FEED_FORWARD_HINTS = {
+  prepare_bob: 'Bob: apply X to q1, then measure it.',
+  measure_bob: 'Bob: measure q1 on the sensor.',
+  send_bit: 'Bob: send the measured bit to Alice (B).',
+  receive_bit: 'Alice: receive Bob’s classical bit (V).',
+  correct_alice: 'Alice: apply X only for bit 0; use Keep (I) only for bit 1 (I).',
+  measure_alice: 'Alice: measure q0 on the sensor.',
+  complete: 'Both qubits are measured. Reach the open exits.',
+};
 const NOTES = {
   wrong_owner: 'This terminal belongs to the other player.',
   terminal_used: 'This terminal is used up.',
@@ -95,8 +104,23 @@ async function call(name, ...args) {
   }
 }
 /** `prev` = the snapshot before the action that produced `snap`: the debugger highlights the bars that changed. */
+function refreshProtocolConsole() {
+  const protocol = snap?.feed_forward;
+  const consoleEl = $('classical-console');
+  consoleEl.hidden = !protocol;
+  if (protocol) {
+    $('protocol-hint').textContent = FEED_FORWARD_HINTS[protocol.phase] ?? 'Follow the Bell Block protocol.';
+    const value = snap.classical_channel?.received ? String(snap.classical_channel.value) : 'hidden until Alice receives the bit';
+    $('classical-value').lastElementChild.textContent = value;
+    $('send-bit').disabled = busy || protocol.phase !== 'send_bit';
+    $('receive-bit').disabled = busy || protocol.phase !== 'receive_bit';
+    $('keep-identity').disabled = busy || protocol.phase !== 'correct_alice' || protocol.required_correction !== 'i';
+  }
+}
+
 const refresh = (note = null, prev = null) => {
   if (world && snap) syncTerminalUses(world, snap); // engine is the source of truth for terminal uses
+  refreshProtocolConsole();
   dbg.update(snap, { lastMeasure, note, error: lastError, prev, sampling: bootSampling });
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -189,7 +213,7 @@ async function startGame(chosen) {
     sm.setState(STATES.LEVEL);
     audio.playMusic(trackForLevel(id));
     refresh(`${lvl.title ?? id} started.`);
-  } finally { busy = false; }
+  } finally { busy = false; refreshProtocolConsole(); }
 }
 
 /**
@@ -211,7 +235,7 @@ async function resetStage(note) {
 
 async function restartStage() {
   busy = true;
-  try { await resetStage('Stage reset.'); } finally { busy = false; }
+  try { await resetStage('Stage reset.'); } finally { busy = false; refreshProtocolConsole(); }
 }
 
 function die() {
@@ -224,7 +248,7 @@ function die() {
     if (sm.state !== 'dead') return;
     busy = true;
     let result;
-    try { result = await resetStage('Stage restarted.'); } finally { busy = false; }
+    try { result = await resetStage('Stage restarted.'); } finally { busy = false; refreshProtocolConsole(); }
     if (sm.state !== 'dead' || result === 'stale') return;
     if (result === 'ok') sm.setState(STATES.LEVEL);
     else { // reset failed: do not hang on the death overlay, report it in the menu
@@ -270,6 +294,16 @@ async function runIntent(intent, ep) {
   dbg.newAction();  // ...and lets an identical message be announced again
   if (intent.type === 'switch') return refresh(`Controlling ${input.active === 'alice' ? 'Alice' : 'Bob'}.`);
   let events;
+  if (intent.type === 'protocol') {
+    const fn = { send_bit: 'send_bit', receive_bit: 'receive_bit', identity: 'confirm_identity' }[intent.action];
+    const args = intent.action === 'send_bit' ? ['bob'] : intent.action === 'receive_bit' ? ['alice'] : ['alice'];
+    const prev = snap;
+    const result = await call(fn, ...args);
+    if (ep !== epoch || !result) return;
+    snap = result.snapshot ?? result;
+    refresh(intent.action === 'send_bit' ? 'Bob sent the classical bit.' : intent.action === 'receive_bit' ? 'Alice received the classical bit.' : 'Alice kept the identity correction.', prev);
+    events = sensorsUnderPlayers(world, snap);
+  } else
   if (intent.type === 'run') { // RUN CIRCUIT: the engine validates the prepared state; errors show in the debugger
     const prev = snap;
     const s = await call('run_circuit');
@@ -291,7 +325,9 @@ async function runIntent(intent, ep) {
     if (ev.type === 'death') return die();
     if (ev.type === 'move') { if (!events.some((e) => e.type === 'death')) audio.play('step', { key: ev.player }); }
     else if (ev.type === 'blocked') note = NOTES[ev.reason] ?? null;
-    else if (ev.type === 'info') note = NOTES[ev.reason];
+    else if (ev.type === 'info') note = ev.reason === 'measurement_locked' && snap.feed_forward
+      ? (FEED_FORWARD_HINTS[snap.feed_forward.phase] ?? FEED_FORWARD_HINTS.prepare_bob)
+      : NOTES[ev.reason];
     else if (ev.type === 'measure') {
       const prev = snap;
       audio.play('measure');
@@ -312,6 +348,9 @@ async function runIntent(intent, ep) {
         snap = s; consumeTerminal(ev.terminal);
         note = describeChange(prev, s, { gate: ev.gate, qubit: ev.qubit, actor: ev.actor });
         before ??= prev;
+        for (const sensorEvent of sensorsUnderPlayers(world, snap)) {
+          if (!events.some((queued) => queued.type === 'measure' && queued.qubit === sensorEvent.qubit)) events.push(sensorEvent);
+        }
       }
     }
   }
@@ -321,15 +360,23 @@ async function runIntent(intent, ep) {
   if (stageComplete(world, snap)) return handleComplete(ep);
 }
 
+function queueProtocol(action) {
+  if (sm.state !== 'level' || !snap?.feed_forward || pending.length >= PENDING_CAP) return;
+  const intent = { type: 'protocol', action };
+  if (busy) pending.push(intent);
+  else runIntents([intent]);
+}
+
 async function runIntents(intents) {
   busy = true;
+  refreshProtocolConsole();
   const ep = epoch;
   try {
     for (const intent of intents) {
       if (sm.state !== 'level' || ep !== epoch) break;
       await runIntent(intent, ep);
     }
-  } finally { busy = false; }
+  } finally { busy = false; refreshProtocolConsole(); }
 }
 
 function frame(t) {
@@ -356,6 +403,10 @@ window.addEventListener('keydown', (e) => {
   // Esc works even while an engine call is in flight: the epoch guard drops its late result.
   if (e.code === 'Escape' && (s === 'level' || s === 'dead' || s === 'win')) sm.setState(STATES.MENU);
   else if (e.code === 'KeyM' && s !== 'menu' && s !== 'loading') toggleSound();
+  else if (s === 'level' && snap?.feed_forward && ['KeyB', 'KeyV', 'KeyI'].includes(e.code)) {
+    e.preventDefault();
+    queueProtocol({ KeyB: 'send_bit', KeyV: 'receive_bit', KeyI: 'identity' }[e.code]);
+  }
   else if (busy) return;
   else if (s === 'level' && e.code === 'KeyR') restartStage();
   else if (s === 'win' && (e.code === 'Enter' || e.code === 'Space')) { e.preventDefault(); sm.setState(STATES.MENU); }
@@ -373,6 +424,10 @@ soundBox.addEventListener('change', applySound);
 $('start-1p').addEventListener('click', () => { audio.play('click'); startGame('1p'); });
 $('start-2p').addEventListener('click', () => { audio.play('click'); startGame('2p'); });
 for (const radio of document.querySelectorAll('input[name="level"]')) radio.addEventListener('change', () => audio.play('click'));
+
+$('send-bit').addEventListener('click', () => queueProtocol('send_bit'));
+$('receive-bit').addEventListener('click', () => queueProtocol('receive_bit'));
+$('keep-identity').addEventListener('click', () => queueProtocol('identity'));
 reduceBox.addEventListener('change', () => renderer.setReduceMotion(reduceBox.checked));
 $('click-to-play').addEventListener('click', (e) => {
   audio.play('click');

@@ -2,7 +2,9 @@
 
 For: Fernanda (level design). Verified by: Juanjo (E6). Status: Phase 0 tests passed on Built-in and IonQ Forte 1 remote simulator (Oct 9–10).
 
-Revision requested by Juanjo (Oct 10, submitted for PR review): Calibration Chamber now builds a Bell pair from zero and explicitly validates it before measurement/unlocking. The independent/entangled opening is historical; current L1 contract is in handoff06 §9 and `levels/level1.json`. Local verification passed; the revised Qollab protocol/full gameplay still needs testing. Existing JS diagnostic movement/focus is confirmed on both backends.
+Revision requested by Juanjo (Oct 10, merged PR #5): Calibration Chamber builds a Bell pair from zero and validates it before measurement/unlocking. The independent/entangled opening is historical; contract/evidence in handoff06 §9 and `levels/level1.json`. The revised Python protocol passed in Qollab built-in/Forte: outcome11 unlocked both doors and reset relocked them. JS diagnostic movement/focus is confirmed; the actual game UI/walkthrough still needs integration.
+
+L2 revision (Oct10): fresh Phi+, Bob X/measure, explicit SEND/RECEIVE, Alice X if0 or KEEP(I) if1, then Alice measures0. Final00/01 both unlock; never require Bob0. Ten map entities, HUD controls. Python protocol passed in Qollab built-in/Forte on branch1→KEEP→Alice0/final01; branch0 covered locally. Local success1/blind0, worstcase2gates. Actual HUD/gameplay/audio walkthrough pending; evidence handoff06§10.
 
 ## 1. Where the game runs
 
@@ -18,7 +20,7 @@ Whoever presses **Run** picks the backend, judges included. The game must work t
 ## 2. Quantum rules for every level
 
 1. **2 qubits per level.** `q0` = Alice (left room), `q1` = Bob (right room). A third shared qubit is a stretch goal for L3 only, never started before L1–L3 are playable.
-2. **Declared gate sets.** L2/L3 retain Alice H/Z, Bob X and shared CX where their JSON permits it. New L1: Alice H, Bob places CX(control=q0,target=q1) from an owner-activated terminal, not a local q1 gate or the L3 two-player terminal. No extra gates/bases.
+2. **Declared gate sets.** L3 keeps AliceH/Z, BobX, sharedCX. L1 AliceH/BobownedCX0→1. L2 BobX(q1), AliceX(q0) only after received0; KEEP(I) on1 is an explicit no-gate decision. SEND/RECEIVE are classical, not quantum gates.
 3. **Every interactive object is bound to one qubit** and shows one of three states: `0`, `1`, `superposition`. A superposed object can't be crossed. The JSON decides what 0 and 1 mean for each object (door opens on 0, bridge appears on 1…).
 4. **Sensor = measurement.** Stepping on it measures its qubit in the 0/1 basis. A measured qubit can't receive gates again. A qubit fixed by correlation but not yet measured still can (that is the whole idea of L2 stage 2).
 5. **Gate budget.** Each level sets `max_gates` (typically 5–6) and how many times each terminal can be used.
@@ -38,7 +40,7 @@ Current designs:
 | Level | Packed states | New to the budget |
 |---|---|---|
 | L1 Calibration Chamber (revision) | Φ⁺ and measured outcomes 00/11; construction preview is 00→+0→Φ⁺ | Shared with existing priorities; no extra pair |
-| L2 Bell Block | Φ⁺, Ψ⁺ | 1 (Ψ⁺) |
+| L2 Bell Block | Φ⁺→Ψ⁺; Bob0→10→AliceX→00 / Bob1→01→KEEP(I)→01 | Covered by existing priorities |
 | L3 The Core | Φ⁺, `\|+0⟩`, `\|−0⟩`, `\|10⟩` (+ Φ⁻ / Ψ⁻ if Z is used on the entangled pair) | 3–5 |
 | **Total** | | **6–8 → 12–16 qubits. Fits (16 was tested).** |
 

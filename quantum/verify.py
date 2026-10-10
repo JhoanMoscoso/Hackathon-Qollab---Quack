@@ -59,7 +59,8 @@ def _report(stage, initial, num_qubits, allow_cx):
         node_id = f"n{len(node_ids)}"
         node_ids[key] = node_id
         nodes.append({"id": node_id, "state": key[0], "measured": key[1],
-                      "circuit_validated": pos.circuit_validated, "actions": []})
+                      "circuit_validated": pos.circuit_validated,
+                      "feed_forward_phase": pos.feed_forward_phase, "actions": []})
         record = memo[key]
         for _, _, _, action, child in record[3]:
             edges = []
@@ -127,8 +128,7 @@ def main() -> int:
             handle.write(rendered + "\n")
     else:
         print(rendered)
-    expected = {"bell_preparation": 1.0, "opposites": 1.0,
-                "feed_forward": 1.0, "core": 1.0}
+    expected = {"bell_preparation": 1.0, "bell_block": 1.0, "core": 1.0}
     for level in report.values():
         if isinstance(level, dict):
             for stage_id, result in level.items():

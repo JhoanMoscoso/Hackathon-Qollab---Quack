@@ -150,7 +150,8 @@ export function stepPlayer(world, playerId, dx, dy, snap) {
   const sensor = at(world.sensors, x, y);
   if (sensor && snap.measured[sensor.qubit] == null) {
     // Locked sensors (L1 before a validated RUN) explain themselves instead of calling the engine.
-    events.push(snap.measurement_enabled === false ? { type: 'info', reason: 'measurement_locked' } : { type: 'measure', qubit: sensor.qubit });
+    const enabled = snap.measurement_allowed?.[sensor.qubit] ?? snap.measurement_enabled;
+    events.push(enabled === false ? { type: 'info', reason: 'measurement_locked' } : { type: 'measure', qubit: sensor.qubit });
   }
   return events;
 }
@@ -211,10 +212,11 @@ export function stageComplete(world, snap) {
  */
 export function sensorsUnderPlayers(world, snap) {
   const events = [];
-  if (snap.measurement_enabled === false) return events;
   for (const player of Object.values(world.players)) {
     const sensor = at(world.sensors, player.x, player.y);
-    if (sensor && snap.measured[sensor.qubit] == null && !events.some((e) => e.qubit === sensor.qubit)) {
+    if (!sensor) continue;
+    const enabled = snap.measurement_allowed?.[sensor.qubit] ?? snap.measurement_enabled;
+    if (enabled !== false && snap.measured[sensor.qubit] == null && !events.some((e) => e.qubit === sensor.qubit)) {
       events.push({ type: 'measure', qubit: sensor.qubit });
     }
   }
