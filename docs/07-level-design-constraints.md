@@ -2,7 +2,7 @@
 
 For: Fernanda (level design). Verified by: Juanjo (E6). Status: Phase 0 tests passed on Built-in and IonQ Forte 1 remote simulator (Oct 9–10).
 
-Revision requested by Juanjo (Oct 10, submitted for PR review): Calibration Chamber now builds a Bell pair from zero and explicitly validates it before measurement/unlocking. The independent/entangled opening is historical; current L1 contract is in handoff06 §9 and `levels/level1.json`. Local verification passed; the revised Qollab protocol/full gameplay still needs testing. Existing JS diagnostic movement/focus is confirmed on both backends.
+Revision requested by Juanjo (Oct 10, merged PR #5): Calibration Chamber builds a Bell pair from zero and validates it before measurement/unlocking. The independent/entangled opening is historical; contract/evidence in handoff06 §9 and `levels/level1.json`. The revised Python protocol passed in Qollab built-in/Forte: outcome11 unlocked both doors and reset relocked them. JS diagnostic movement/focus is confirmed; the actual game UI/walkthrough still needs integration.
 
 ## 1. Where the game runs
 

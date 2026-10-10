@@ -4,7 +4,7 @@ Dueño: Juanjo. Consumidor: Jhoan (`main.js`). Todo lo que se devuelve a JS es *
 
 **Contrato implementado v2:** niveles con `stages[]`, API/ejemplo real en `docs/snapshot-example.json` e instrucciones de entrega en `docs/06-handoff-juanjo.md` §7. Los mapas siguen pendientes de walkthrough JS. Extensiones v2 son explícitas, no suponer que el ejemplo antiguo de un nivel sin etapas es un asset listo para cargar.
 
-**Revisión de L1 para PR (2026-10-10):** `Calibration Chamber` ahora parte de |00⟩ y exige H de Alice, CX de Bob y `run_circuit()` antes de medir. Snapshot inicial en `docs/snapshot-level1-example.json`. Las pruebas Qollab históricas corresponden al diseño anterior; esta revisión está validada localmente y todavía debe probarse en Qollab y conectarse a la UI antes de declararse jugable.
+**Revisión de L1 integrada y validada (2026-10-10):** `Calibration Chamber` parte de |00⟩ y exige H de Alice, CX de Bob y `run_circuit()` antes de medir. PR #5 fusionado; protocolo completo pasó en Qollab built-in/Forte, incluida apertura para 11 y reset. Snapshot inicial en `docs/snapshot-level1-example.json`; evidencia en handoff06 §9. Falta conectar UI/colisiones y realizar el walkthrough antes de declararse jugable.
 
 ## Conceptos que el equipo debe entender (en orden)
 
