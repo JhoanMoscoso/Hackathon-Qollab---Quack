@@ -261,7 +261,7 @@ def read_level(level_id: str) -> dict:
     return validate_level(data)
 
 
-AUDIO_TRACKS = ("menu", "level1", "level2")
+AUDIO_TRACKS = ("menu", "level1", "level2", "level3")
 AUDIO_MAX_BYTES = 2 * 1024 * 1024
 
 
@@ -273,7 +273,7 @@ def audio_payload(track: str = "menu") -> dict:
     """Background track as JSON-compatible base64 (no proxies). Fixed track -> file map.
 
     Separate literal open() calls are intentional: Qollab's file access relies on literal paths.
-    Levels 2 and 3 share the "level2" track.
+    Each level has its own track (level3 = The Core).
     """
     if not isinstance(track, str) or track not in AUDIO_TRACKS:
         raise InvalidTrack(f"Unknown audio track; expected one of {', '.join(AUDIO_TRACKS)}")
@@ -283,8 +283,11 @@ def audio_payload(track: str = "menu") -> dict:
     elif track == "level1":
         with open("audio/fondo_1.ogg", "rb") as handle:
             data = handle.read(AUDIO_MAX_BYTES + 1)
-    else:
+    elif track == "level2":
         with open("audio/fondo_2.ogg", "rb") as handle:
+            data = handle.read(AUDIO_MAX_BYTES + 1)
+    else:
+        with open("audio/fondo_3.ogg", "rb") as handle:
             data = handle.read(AUDIO_MAX_BYTES + 1)
     if len(data) > AUDIO_MAX_BYTES:
         raise ValueError("Audio track exceeds the 2 MB asset limit")

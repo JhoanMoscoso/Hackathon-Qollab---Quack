@@ -322,7 +322,7 @@ def snapshot():
 
 
 def load_audio(track="menu"):
-    """track: "menu" | "level1" | "level2" (levels 2 and 3 share "level2")."""
+    """track: "menu" | "level1" | "level2" | "level3" (one track per level)."""
     try:
         return encode(audio_payload(track))
     except (OSError, ValueError) as error:

@@ -16,7 +16,7 @@ const NOISE_REF_HZ = 440;     // noise "pitch": playbackRate = Hz / 440
 const MIN_ATTACK_S = 0.003;   // avoids a click when the sample attack is 0
 const THROTTLE_MS = Object.freeze({ step: 120 }); // key-repeat must not spam footsteps
 const WAVES = ['sine', 'triangle', 'square', 'noise'];
-const TRACKS = Object.freeze({ level1: 'level1', level2: 'level2', level3: 'level2' }); // levels 2 and 3 share a track
+const TRACKS = Object.freeze({ level1: 'level1', level2: 'level2', level3: 'level3' }); // one track per level
 const GATE_SFX = Object.freeze({ h: 'gate_H', x: 'gate_X', z: 'gate_Z', cx: 'gate_CX', cnot: 'gate_CX' });
 
 const num = (v, fallback) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
@@ -229,7 +229,7 @@ export function createAudio({
     }
   }
 
-  /** Ask for a background track ('menu' | 'level1' | 'level2'). Same track as now/loading: ignored. */
+  /** Ask for a background track ('menu' | 'level1' | 'level2' | 'level3'). Same track as now/loading: ignored. */
   function playMusic(track) {
     if (!track) return Promise.resolve();
     if (track === wanted && (current?.track === track || pendingTrack === track)) return pendingPromise ?? Promise.resolve();
