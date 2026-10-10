@@ -8,6 +8,7 @@ import { createWorld, resetWorld, stepPlayer, interact, consumeTerminal, checkWi
 import { createInput } from './js/input.js';
 import { createRenderer } from './js/render.js';
 import { createDebugger } from './js/debugger.js';
+import { loadSprites } from './js/sprite_loader.js';
 
 const LEVEL_ID = 'test';
 const DEATH_MS = 1000;
@@ -217,7 +218,8 @@ $('click-to-play').addEventListener('click', (e) => {
 
 (async () => {
   requestAnimationFrame(frame);
-  level = await call('load_level', LEVEL_ID);
+  // Sprites decode in parallel with the engine; loadSprites never rejects, so a failure only means procedural art.
+  [level] = await Promise.all([call('load_level', LEVEL_ID), loadSprites()]);
   if (!level) { $('load-status').textContent = `Error: ${lastError}`; return; }
   try { grid = parseLevel(level); } catch (e) { $('load-status').textContent = `Error: ${e.message}`; return; }
   sm.setState(STATES.MENU);

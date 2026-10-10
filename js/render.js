@@ -1,9 +1,11 @@
-// Canvas 2D renderer. Procedural placeholder art; real sprites plug in through drawSprite().
+// Canvas 2D renderer. Draws pixel-art sprites when globalThis.SPRITES is set (js/sprite_loader.js),
+// and falls back to procedural shapes everywhere when it is not.
 // Pure drawing: no engine calls, no DOM access besides the canvas passed in.
-// State is never encoded by color alone: 0 = open frame + "0", 1 = filled block + X + "1",
-// super = diagonal stripes + "?".
+// State is never encoded by color or sprite alone: 0 = "0" badge, 1 = "1" badge, super = animated
+// diagonal stripes + "?" badge; exits and players carry an A/B letter.
 
 import { CELL, COLS, ROWS, WALL_COLS } from './grid.js';
+import { characterFrame, dirFromDelta, walkFrameIndex } from './sprite_map.js';
 
 export const WIDTH = COLS * CELL;  // 640
 export const HEIGHT = ROWS * CELL; // 384
@@ -31,16 +33,32 @@ const FONT = 'ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace';
 const playerColor = (id) => (id === 'alice' ? COLORS.alice : COLORS.bob);
 const px = (cell) => cell * CELL;
 
+export const OPEN_DOOR_ALPHA = 0.35; // passable door: sprite is ghosted, its badge stays at full alpha
+export const WALK_MS = 250;          // how long a player keeps the walk cycle after changing cell
+const INK = '#0E1116';
+
 /**
  * Sprite hook. Returns true if a sprite was drawn; false means "no spritesheet / unknown name",
- * so the caller falls back to its procedural shape. Expected shape (set by sprites.js later):
- * globalThis.SPRITES = { image: CanvasImageSource, frames: { name: { x, y, w, h } } }
+ * so the caller falls back to its procedural shape. Shape (set by sprite_loader.js):
+ * globalThis.SPRITES = { image, frames: { name: { x, y, w, h } }, characters: { alice: img, bob: img } }
+ * Always drawn CELL x CELL (2x the 16 px art) at integer positions.
  */
 export function drawSprite(ctx, name, x, y) {
   const sheet = globalThis.SPRITES;
   const frame = sheet?.frames?.[name];
   if (!sheet?.image || !frame) return false;
   ctx.drawImage(sheet.image, frame.x, frame.y, frame.w, frame.h, x, y, CELL, CELL);
+  return true;
+}
+
+const hasSprite = (name) => !!(globalThis.SPRITES?.image && globalThis.SPRITES.frames?.[name]);
+
+/** Character strip frame, or false when there is no strip for this player (procedural fallback). */
+function drawCharacter(ctx, id, dir, frameIndex, x, y) {
+  const strip = globalThis.SPRITES?.characters?.[id];
+  if (!strip) return false;
+  const f = characterFrame(dir, frameIndex);
+  ctx.drawImage(strip, f.x, f.y, f.w, f.h, x, y, CELL, CELL);
   return true;
 }
 
@@ -84,8 +102,28 @@ function drawDoneBadge(ctx, x, y) {
   ctx.restore();
 }
 
+/** Small filled square with one glyph, always drawn at full alpha. corner: tl | tr | bl | br. */
+function drawBadge(ctx, x, y, corner, glyph, fill, ink = INK) {
+  const size = 14;
+  const bx = corner.endsWith('r') ? x + CELL - size - 1 : x + 1;
+  const by = corner.startsWith('b') ? y + CELL - size - 1 : y + 1;
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = fill;
+  ctx.fillRect(bx, by, size, size);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bx + 0.5, by + 0.5, size - 1, size - 1);
+  ctx.restore();
+  text(ctx, glyph, bx + size / 2, by + size / 2 + 1, { size: 11, color: ink });
+}
+
 // ---------- layers ----------
 function drawFloor(ctx) {
+  if (hasSprite('floor')) {
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) drawSprite(ctx, 'floor', px(x), px(y));
+    return;
+  }
   for (let y = 0; y < ROWS; y++) {
     for (let x = 0; x < COLS; x++) {
       ctx.fillStyle = (x + y) % 2 ? COLORS.floor : COLORS.floorAlt;
@@ -139,13 +177,44 @@ function drawStripes(ctx, x, y, color, shift) {
   ctx.restore();
 }
 
+/** Translucent diagonal stripes over the (stripe-less) super sprite. */
+function drawStripeOverlay(ctx, x, y, shift) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, CELL, CELL);
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(27, 20, 48, 0.75)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  for (let i = -CELL; i < CELL * 2; i += 8) {
+    ctx.moveTo(x + i + shift, y + CELL);
+    ctx.lineTo(x + i + shift + CELL, y);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawDoorSprite(ctx, door, snap, state, x, y, t, reduceMotion) {
+  ctx.save();
+  if (door.isOpen(snap)) ctx.globalAlpha = OPEN_DOOR_ALPHA; // passable: ghost over the floor
+  drawSprite(ctx, `door_${state}`, x, y);
+  ctx.restore();
+  if (state === 'super') {
+    drawStripeOverlay(ctx, x, y, reduceMotion ? 0 : (Math.floor(t / 250) % 4) * 2); // 4 fps
+    drawBadge(ctx, x, y, 'tr', '?', COLORS.superpos);
+  } else {
+    drawBadge(ctx, x, y, 'tr', state, state === '0' ? COLORS.zero : COLORS.one);
+  }
+}
+
 function drawDoor(ctx, door, snap, t, reduceMotion) {
   const x = px(door.x);
   const y = px(door.y);
   const state = snap.objects?.[door.name];
   const cx = x + CELL / 2;
   const cy = y + CELL / 2;
-  if (!drawSprite(ctx, `door_${state}`, x, y)) {
+  if (hasSprite(`door_${state}`)) drawDoorSprite(ctx, door, snap, state, x, y, t, reduceMotion);
+  else {
     if (state === '0') {
       ctx.strokeStyle = COLORS.zero;
       ctx.lineWidth = 3;
@@ -179,20 +248,25 @@ function drawSensor(ctx, sensor, snap) {
   const y = px(sensor.y);
   const cx = x + CELL / 2;
   const cy = y + CELL / 2 - 3;
-  const done = snap.measured?.[sensor.qubit] != null;
-  const sprite = (() => {
-    ctx.save();
-    if (done) ctx.globalAlpha = 0.4; // dim the base shape only
-    const drawn = drawSprite(ctx, 'sensor', x, y);
-    if (!drawn) {
-      circle(ctx, cx, cy, 11, { stroke: COLORS.text, width: 2 });
-      circle(ctx, cx, cy, 5, { fill: COLORS.text });
-      circle(ctx, cx, cy, 2, { fill: '#0E1116' });
-    }
+  const value = snap.measured?.[sensor.qubit];
+  const done = value != null;
+  if (hasSprite('sensor_idle')) {
+    drawSprite(ctx, done ? `sensor_${value}` : 'sensor_idle', x, y);
+    ctx.save(); // label plate keeps Q0/Q1 readable on top of the art
+    ctx.fillStyle = 'rgba(14, 17, 22, 0.8)';
+    ctx.fillRect(x + 5, y + CELL - 13, CELL - 10, 12);
     ctx.restore();
-    return drawn;
-  })();
-  if (!sprite) text(ctx, `Q${sensor.qubit}`, cx, y + CELL - 5, { size: 9 }); // label stays at full alpha
+    text(ctx, `Q${sensor.qubit}`, cx, y + CELL - 7, { size: 9 });
+    if (done) drawDoneBadge(ctx, x, y);
+    return;
+  }
+  ctx.save();
+  if (done) ctx.globalAlpha = 0.4; // dim the base shape only
+  circle(ctx, cx, cy, 11, { stroke: COLORS.text, width: 2 });
+  circle(ctx, cx, cy, 5, { fill: COLORS.text });
+  circle(ctx, cx, cy, 2, { fill: INK });
+  ctx.restore();
+  text(ctx, `Q${sensor.qubit}`, cx, y + CELL - 5, { size: 9 }); // label stays at full alpha
   if (done) drawDoneBadge(ctx, x, y);
 }
 
@@ -205,7 +279,7 @@ function drawTerminal(ctx, term) {
   if (used) ctx.globalAlpha = 0.4; // dim the base shape only
   const drawn = drawSprite(ctx, `terminal_${term.gate}`, x, y);
   if (!drawn) {
-    ctx.fillStyle = '#0E1116';
+    ctx.fillStyle = INK;
     ctx.fillRect(x + 3, y + 3, CELL - 6, CELL - 6);
     ctx.strokeStyle = color;
     ctx.lineWidth = 3;
@@ -239,7 +313,14 @@ function drawExit(ctx, exit) {
   const x = px(exit.x);
   const y = px(exit.y);
   const color = playerColor(exit.player);
-  if (drawSprite(ctx, `exit_${exit.player}`, x, y)) return;
+  const letter = exit.player === 'alice' ? 'A' : 'B';
+  if (drawSprite(ctx, 'exit', x, y)) { // identity by border + letter, not only by color
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 1, y + 1, CELL - 2, CELL - 2);
+    drawBadge(ctx, x, y, 'br', letter, color);
+    return;
+  }
   ctx.strokeStyle = color;
   ctx.lineWidth = 3;
   ctx.strokeRect(x + 3, y + 3, CELL - 6, CELL - 6);
@@ -252,25 +333,31 @@ function drawExit(ctx, exit) {
   ctx.fill();
 }
 
-function drawPlayer(ctx, player, view) {
+/** motion = { dir, until }: facing and the time until which the walk cycle runs. */
+function drawPlayer(ctx, player, view, motion, t, reduceMotion) {
   const x = px(player.x);
   const y = px(player.y);
   const cx = x + CELL / 2;
   const cy = y + CELL / 2;
   const color = playerColor(player.id);
+  const letter = player.id === 'alice' ? 'A' : 'B';
   if (view.mode === '1p' && view.active === player.id) { // active marker, shape not color
     ctx.save();
     ctx.setLineDash([3, 3]);
     circle(ctx, cx, cy, 15, { stroke: COLORS.text, width: 2 });
     ctx.restore();
   }
-  if (drawSprite(ctx, `player_${player.id}`, x, y)) return;
+  const frameIndex = walkFrameIndex(t, t < motion.until, reduceMotion);
+  if (drawCharacter(ctx, player.id, motion.dir, frameIndex, x, y)) {
+    drawBadge(ctx, x, y, 'tl', letter, color); // both chicks look alike: the letter tells them apart
+    return;
+  }
   if (player.id === 'alice') circle(ctx, cx, cy, 11, { fill: color });
   else {
     ctx.fillStyle = color;
     ctx.fillRect(cx - 10, cy - 10, 20, 20);
   }
-  text(ctx, player.id === 'alice' ? 'A' : 'B', cx, cy + 1, { size: 14, color: '#0E1116' });
+  text(ctx, letter, cx, cy + 1, { size: 14, color: INK });
 }
 
 function drawOverlay(ctx, view) {
@@ -292,6 +379,25 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   const ctx = canvas.getContext('2d');
   let reduce = reduceMotion;
   ctx.imageSmoothingEnabled = false;
+  // Per-player facing and walk timer, derived from cell changes between draws (renderer-local, no game state).
+  const motion = {
+    alice: { x: null, y: null, dir: 'down', until: 0 },
+    bob: { x: null, y: null, dir: 'down', until: 0 },
+  };
+  const track = (player, t) => {
+    const m = motion[player.id];
+    if (m.x !== null && (m.x !== player.x || m.y !== player.y)) {
+      const dx = player.x - m.x;
+      const dy = player.y - m.y;
+      if (Math.abs(dx) + Math.abs(dy) === 1) { // a real step; resets/teleports do not animate
+        m.dir = dirFromDelta(dx, dy);
+        m.until = t + WALK_MS;
+      }
+    }
+    m.x = player.x;
+    m.y = player.y;
+    return m;
+  };
 
   return {
     setReduceMotion(b) { reduce = !!b; },
@@ -313,8 +419,10 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       for (const term of world.terminals) drawTerminal(ctx, term);
       if (world.cnot) drawCnot(ctx, world.cnot);
       for (const exit of world.exits) drawExit(ctx, exit);
-      drawPlayer(ctx, world.players.alice, view);
-      drawPlayer(ctx, world.players.bob, view);
+      for (const id of ['alice', 'bob']) {
+        const player = world.players[id];
+        drawPlayer(ctx, player, view, track(player, t), t, reduce);
+      }
       drawOverlay(ctx, view);
     },
   };
