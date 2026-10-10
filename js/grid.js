@@ -4,7 +4,7 @@
 export const CELL = 32;
 export const MAX_COLS = 20; // engine maximum (quantum/levels.py); maps may be any rectangle up to this size
 export const MAX_ROWS = 12;
-export const THEMES = ['lab', 'prison'];
+export const THEMES = ['lab', 'prison', 'core'];
 export const DEFAULT_THEME = 'lab';
 
 /**

@@ -7,7 +7,7 @@ import json
 from copy import deepcopy
 
 LEVEL_IDS = ("level1", "level2", "level3")
-THEMES = ("lab", "prison")  # art sets of the client (assets/themes/*.json); purely visual
+THEMES = ("lab", "prison", "core")  # art sets of the client (assets/themes/*.json); purely visual
 
 
 def integer(value, lower=0, upper=None):

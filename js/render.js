@@ -258,6 +258,26 @@ function drawIndicator(ctx, door, state, x, y) {
   }
 }
 
+/** Small procedural icon of the lethal qubit-bound objects (L3): planks for the bridge, a beam for the laser. */
+function drawLethalIcon(ctx, type, x, y, open) {
+  ctx.save();
+  if (type === 'conditional_lethal_bridge') {
+    for (const dy of [9, 15, 21]) { // three planks, drawn solid when the bridge exists (open) and outlined when it is gone
+      ctx.fillStyle = open ? '#C9A15B' : 'rgba(201, 161, 91, 0.25)';
+      ctx.fillRect(x + 5, y + dy, CELL - 10, 4);
+      ctx.strokeStyle = '#2A1C0C';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 5.5, y + dy + 0.5, CELL - 11, 3);
+    }
+  } else if (type === 'conditional_lethal_laser') {
+    ctx.globalAlpha = open ? 0.35 : 1; // beam is dim when the laser is safe
+    ctx.setLineDash(open ? [3, 3] : []);
+    line(ctx, x + 2, y + CELL / 2, x + CELL - 2, y + CELL / 2, '#FF5A5A', 3);
+    line(ctx, x + 2, y + CELL / 2, x + CELL - 2, y + CELL / 2, '#FFFFFF', 1);
+  }
+  ctx.restore();
+}
+
 function drawDoor(ctx, door, snap, sheet, t, reduceMotion) {
   const x = px(door.x);
   const y = px(door.y);
@@ -275,6 +295,7 @@ function drawDoor(ctx, door, snap, sheet, t, reduceMotion) {
     drawTile(ctx, sheet, tileName, x, y);
     ctx.restore();
     // Engine doors say it with a padlock / open doorway; qubit doors keep a text badge next to the glyph art.
+    if (door.lethal && !engine) drawLethalIcon(ctx, door.type, x, y, door.isOpen(snap));
     if (!engine) drawBadge(ctx, x, y, 'tr', state === 'super' ? '?' : state, state === 'super' ? COLORS.superpos : state === '0' ? COLORS.zero : COLORS.one);
   } else {
     if (state === '0') {

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Slices the four AI-generated 2048x2048 theme sheets in assets/src/ into game-ready 256x256 RGBA PNGs:
-#   assets/themes/{lab,prison}_tiles.png  normalized 8x8 grid of 32 px cells (the renderer's CELL), see below
-#   assets/themes/{lab,prison}_props.png  objects at 1/8 scale, same relative layout as the source sheet
-# Needs ImageMagick 7 (`magick`). Deterministic. Usage: scripts/slice-themes.sh [lab|prison ...]
+#   assets/themes/{lab,prison,core}_tiles.png  normalized 8x8 grid of 32 px cells (the renderer's CELL), see below
+#   assets/themes/{lab,prison,core}_props.png  objects at 1/8 scale, same relative layout as the source sheet
+# Needs ImageMagick 7 (`magick`). Deterministic. Usage: scripts/slice-themes.sh [lab|prison|core ...]
 #
 # 1. KEY: on the full-resolution JPEG every pixel within FUZZ of magenta #FF00FF becomes transparent, then the
 #    alpha is choked CHOKE px so what is left of the JPEG halo disappears (visually checked on dark and light
@@ -230,11 +230,123 @@ prison_props() {
 REGIONS
 }
 
-targets=("$@"); [[ ${#targets[@]} -gt 0 ]] || targets=(lab prison)
+# ---------------------------------------------------------------- core (L3: circuit-board / processor die)
+# Sources: core_titles.jpg (tiles) and core_props.jpg (props), 2048x2048. The tile sheet is a 8x5 grid of ~247 px
+# cells (pitch 256) followed by three rows of loose components, all on a dark-pink background rgb(190,58,125).
+# The props sheet is bright magenta with muted-purple cell backgrounds rgb(157,84,129) in the cable / decal rows;
+# both are keyed. There is no wall art: wall faces are the chips and heat sinks seated on a dark board colour.
+CORE_BOARD='#111320'   # the floor board colour: backing of the chip wall faces and of the keyed exit sockets
+
+# fillcell <out.png> <col> <row> <color>   (paints one 32x32 output cell)
+fillcell() { magick "$1" -fill "$4" -draw "rectangle $(($2 * 32)),$(($3 * 32)) $(($2 * 32 + 31)),$(($3 * 32 + 31))" -strip "$1"; }
+
+# shade <out.png> <col> <row> <brightness%>   (darkens one output cell in place, alpha untouched)
+shade() {
+  magick "$1" \( +clone -crop 32x32+$(($2 * 32))+$(($3 * 32)) +repage -modulate "$4",90 \) -geometry "+$(($2 * 32))+$(($3 * 32))" -compose Over -composite -strip "$1"
+}
+
+core_tiles() {
+  local src=assets/src/core_titles.jpg out=$OUT/core_tiles.png keyed="$TMP/core_tiles_keyed.png" pkeyed="$TMP/core_props_keyed4tiles.png" c
+  local rx=(13 271 527 781 1036) rh=(236 234 230 230 232)    # measured source rows (inset 8 px: the key choke leaves a thin transparent rim): y and height
+  key "$src" "$keyed" 'rgb(190,58,125)'; key assets/src/core_props.jpg "$pkeyed" 'rgb(157,84,129)'; blank "$out"
+  for c in 0 1 2 3 4 5 6 7; do
+    cell "$keyed" "$out" $c 0 S $((13 + 256 * c)) ${rx[0]} 231 ${rh[0]}                  # row 0 PCB floors (6-7 hazard stripes)
+    if (( c < 6 )); then fillcell "$out" $c 1 "$CORE_BOARD"; fi                            # chips / heat sinks sit on the board
+    cell "$keyed" "$out" $c 1 S $((13 + 256 * c)) ${rx[1]} 231 ${rh[1]}                  # row 1 wall faces + trace tiles
+    cell "$keyed" "$out" $c 2 S $((13 + 256 * c)) ${rx[2]} 231 ${rh[2]}                  # row 2 doors
+    cell "$keyed" "$out" $c 3 S $((13 + 256 * c)) ${rx[3]} 231 ${rh[3]}                  # row 3 sensors (0-3), pads (4-5), sockets (6-7)
+    if (( c < 4 || c == 6 )); then cell "$keyed" "$out" $c 4 S $((13 + 256 * c)) ${rx[4]} 231 ${rh[4]}; fi   # row 4 H X Z blank + blank (the repeated H X Z cells are replaced below)
+  done
+  cell "$keyed" "$out" 7 4 S 13 ${rx[0]} 231 ${rh[0]}                                     # floor_shadow base: floor_a (dimmed below)
+  # co-op CX plates: the props sheet's two-qubit chip (cyan = control, gold = target)
+  cell "$pkeyed" "$out" 4 4 C 22 22 346 344
+  cell "$pkeyed" "$out" 5 4 C 416 22 349 344
+  # exits: an empty socket is closed, the same socket with a chip seated in it (the plain pad cells 4/5) is open
+  magick "$keyed" -crop 150x150+$((13 + 256 * 4 + 40))+$((rx[3] + 40)) +repage -filter Box -resize 18x18! "$TMP/chip_a.png"
+  magick "$keyed" -crop 150x150+$((13 + 256 * 5 + 40))+$((rx[3] + 40)) +repage -filter Box -resize 18x18! "$TMP/chip_b.png"
+  magick "$TMP/chip_b.png" -modulate 125,110 "$TMP/chip_b.png"
+  cell "$keyed" "$out" 5 3 S $((13 + 256 * 7)) ${rx[3]} 231 ${rh[3]}                     # exit_open_a base: socket
+  magick "$out" "$TMP/chip_a.png" -geometry "+$((5 * 32 + 7))+$((3 * 32 + 7))" -compose Over -composite -strip "$out"
+  magick "$out" "$TMP/chip_b.png" -geometry "+$((7 * 32 + 7))+$((3 * 32 + 7))" -compose Over -composite -strip "$out"
+  # rows 5-7: 24 loose components (name -> cell in assets/themes/core.json)
+  local i=0 x y w h
+  while read -r x y w h; do
+    cell "$keyed" "$out" $((i % 8)) $((5 + i / 8)) F "$x" "$y" "$w" "$h"; i=$((i + 1))
+  done <<'ITEMS'
+30 1372 195 67
+287 1372 194 72
+588 1321 104 173
+819 1331 154 154
+1105 1321 94 173
+1361 1321 94 173
+1556 1372 216 67
+1873 1321 94 173
+30 1628 195 67
+332 1576 105 175
+588 1576 105 175
+819 1586 154 155
+1105 1577 95 174
+1361 1577 94 174
+1546 1546 236 231
+1863 1612 113 103
+31 1884 194 67
+332 1833 104 174
+588 1833 105 174
+819 1843 154 154
+1105 1833 94 174
+1300 1812 216 216
+1546 1802 236 231
+1864 1869 112 102
+ITEMS
+  shade "$out" 1 3 55                                                                  # sensor_disabled: the idle pad, dimmed
+  shade "$out" 7 4 55                                                                  # floor_shadow: a floor tile, dimmed
+}
+
+core_props() {
+  local out=$OUT/core_props.png keyed="$TMP/core_props_keyed.png" x y w h
+  key assets/src/core_props.jpg "$keyed" 'rgb(157,84,129)'; blank "$out"
+  while read -r x y w h; do region "$keyed" "$out" "$x" "$y" "$w" "$h"; done <<'REGIONS'
+2 2 44 44
+52 2 45 44
+103 1 56 47
+212 2 43 44
+212 50 43 44
+7 51 26 68
+45 51 26 68
+77 56 51 35
+132 57 35 42
+173 49 33 77
+80 95 44 34
+0 129 32 31
+32 129 32 31
+64 129 32 31
+96 129 32 31
+128 129 32 31
+160 129 32 31
+192 129 32 31
+224 129 32 31
+0 160 64 64
+65 166 62 19
+64 192 64 32
+128 160 64 64
+197 164 54 25
+192 192 64 32
+64 224 64 32
+160 224 32 32
+6 228 19 23
+38 228 19 23
+131 227 25 24
+192 225 31 28
+224 225 32 28
+REGIONS
+}
+
+targets=("$@"); [[ ${#targets[@]} -gt 0 ]] || targets=(lab prison core)
 for t in "${targets[@]}"; do
   case "$t" in
     lab) lab_tiles; lab_props ;;
     prison) prison_tiles; prison_props ;;
+    core) core_tiles; core_props ;;
     *) echo "unknown theme: $t" >&2; exit 2 ;;
   esac
   echo "sliced $t"
