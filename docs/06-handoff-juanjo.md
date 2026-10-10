@@ -4,6 +4,8 @@ Eres dueño de `quantum/` y de `levels/*.json`. El contrato con Jhoan está en `
 
 **Actualización experimental y de entrega: 2026-10-09.** Juanjo creó el proyecto separado **Q-Quack py**, de tipo Python/Qiskit. Los experimentos se resumen en §6; el contexto detallado está en Engram. **El motor, niveles, snapshot y pruebas locales ya están implementados**; estado de entrega e instrucciones para Jhoan en §7. Los bloques E1–E4 siguen siendo experimentos de `main.py`, no el bootstrap del juego.
 
+**Revisión de L1 solicitada el 2026-10-10:** reemplaza las dos etapas automáticas por construcción de Bell desde |00⟩ + RUN CIRCUIT + medición + puertas físicas. Juanjo autorizó publicar esta revisión como PR; detalles en §9. No confundir validación local con las pruebas Qollab históricas del diseño anterior. Foco/movimiento del diagnóstico están confirmados en ambos backends; el walkthrough del juego completo sigue pendiente.
+
 ## 0. Entorno (30 min)
 
 Local:
@@ -105,11 +107,11 @@ Implementa `quantum/enumerate.py` según la spec: BFS con dedupe por `canonical_
 
 ### E6 — Verificador de niveles (local, el más importante)
 Para cada etapa: búsqueda exhaustiva de secuencias y **políticas condicionadas al resultado de medición** hasta `max_gates`, respetando qubits medidos y recursos; reporte de:
-- ¿existe una estrategia con probabilidad de victoria = 1.0 por intento? Debe existir salvo **L1 etapa 1**: sin compuertas, su óptimo es 0.5 por intento. Reiniciar no convierte esa etapa en una solución determinista de un solo intento.
-- ¿cuál es la probabilidad de victoria midiendo a ciegas sin compuertas? (L1 etapa 1: 0.5; L1 etapa 2: 1.0; L2 etapa 1: 0.0; L2 etapa 2: 0.5; L3: 0.0)
+- ¿existe estrategia de victoria = 1.0 por intento? En el nuevo L1 sí: H→CX→RUN→medir ambos. La antigua excepción L1/independent=0.5 es histórica, ya no una etapa actual.
+- ¿probabilidad de victoria midiendo a ciegas sin gates? Nuevo L1: 0 porque la medición sin validación está bloqueada; no porque |00⟩ tenga resultados aleatorios. L2 etapas: 0.0/0.5; L3: 0.0.
 - lista de todas las soluciones mínimas (para el narrador y el README).
 
-Para precompute se deduplican vectores por `canonical_key`; para verificar acciones legales también cuentan mediciones explícitas, gates restantes y usos de terminal. Un mismo vector con diferentes recursos no es el mismo nodo lógico. **E5/E6 ejecutados localmente** sobre las cinco etapas implementadas; resultados en §7. La verificación es cuántica/con recursos, no sustituye el walkthrough espacial en JS.
+Para precompute se deduplican vectores por `canonical_key`; nodos lógicos también consideran observaciones, recursos y ahora historial/prueba de validación. Φ⁺ preparado y Φ⁺ validado comparten vector, pero no acciones legales. E5/E6 local se ejecutó para las cuatro etapas actuales; ver §7 y §9. No sustituye walkthrough espacial.
 
 ### E7 — Rendimiento del puente JS↔Python (proyecto JS junto con Jhoan, H+4)
 Mide con `performance.now()` en JS el coste de `apply_gate` y `measure`. Objetivo < 20 ms. Si `Statevector` de 3 qubits tarda más, cachea por `state_key`.
@@ -120,11 +122,13 @@ Mide con `performance.now()` en JS el coste de `apply_gate` y `measure`. Objetiv
 
 Convención: `q0` = Alice, `q1` = Bob. Objetos: `open_on` = valor que lo deja pasar; `lethal` = pisarlo en el otro valor mata.
 
-### L1 — Calibration (Lab). Sin compuertas. Dos etapas, el registro se re-prepara entre ellas.
-- Etapa 1 "Independent lock": `initial_circuit = [["h",0],["h",1]]`. Puertas `door_A(q0)`, `door_B(q1)`, ambas `open_on: 0`. Cerradura de paridad: la salida se abre si los dos resultados **coinciden** (`win: {"parity": "equal"}`). Medidos a ciegas: p = 0.5. Fallo = "lock jams", reinicio de etapa (sin muerte).
-- Etapa 2 "Entangled lock": `initial_circuit = [["h",0],["cx",0,1]]` (Φ⁺). Misma cerradura. p = 1.0 siempre.
-
-**Ajuste implementado explícitamente en `levels/level1.json`:** `door_A/B` son indicadores no bloqueantes; `joint_lock` sigue el objetivo de paridad y permite las dos ramas 00/11. JS debe respetar `blocking: false` y exigir `objective.quantum_ready` para las salidas. Queda revisar esta representación y el recorrido con Jhoan; la garantía cuántica no demuestra el walkthrough espacial.
+### L1 — Calibration Chamber. Una etapa: construir, ejecutar, medir y escapar.
+- Inicio: `initial_circuit: []` → |00⟩, historial vacío, dos puertas físicas cerradas. La coincidencia 00 por sí sola no autoriza victoria.
+- Alice dispone de H(q0), Bob de CX(0,1); una vez cada terminal y max_gates=2. Bob activa la operación del par, no una gate local sobre q1; L3 conserva CX compartida con ambas placas.
+- Secuencia exigida: H(q0)→CX(q0,q1), seguido de `run_circuit()` que comprueba orden y Φ⁺ módulo fase global. No es otra llamada a backend.run.
+- Medir antes de validación se rechaza sin consumir muestreo ni mutar sesión. RUN válido congela el circuito pero no abre puertas.
+- Medir ambos en Z produce idealmente 00/11. Solo después de ambas medidas coincidentes se abren las dos `validated_exit`, independientemente del valor local 0/1. Reset quita prueba/historial/observaciones y vuelve a cerrar.
+- UI usa `measurement_enabled`, `door_states` y `exits_unlocked`; llegar a ambas salidas sigue siendo requisito espacial. No usar `objects="0"` como equivalente de puerta abierta.
 
 ### L2 — Bell Block (Prison). Gate set: Bob `["x"]`. Dos etapas.
 - Etapa 1 "Opposites": Φ⁺. Cada celda tiene dos puertas: `north(open_on 0)` y `south(open_on 1)`, ambas llevan al pasillo. Trampa: `win: {"parity": "different"}` — si los dos resultados coinciden, alarma (muerte). A ciegas: p = 0.0. Solución: `X(q1)` → Ψ⁺ → p = 1.0.
@@ -206,7 +210,7 @@ En la segunda ejecución individual de Forte, 3/200 shots (1.5 %) quedaron fuera
 4. **Snapshot entregado:** `docs/snapshot-example.json` reproduce el resultado real de `new_session("level2")` y tiene test de igualdad contra la API. Jhoan puede construir su mock y adaptar el render a etapas/fuentes v2.
 5. **Motor y E5/E6 implementados:** validación de recetas del catálogo pasó localmente. Motor real pasó en Qollab Python y el diagnóstico JS/E7 también pasó en ambos backends. Sigue pendiente adaptar y recorrer el frontend del juego; no repetir E4 básico ni E7 sin una regresión o cambio de escenario.
 
-**Balance:** E1/E3/E4 básico validados; E2 rechazó listas y la solución de pack único ya pasó en ambos backends (30/60 listas no realizados); E5/E6 ejecutados localmente; **E7 validado en el diagnóstico de dos qubits**. Falta walkthrough del juego y confirmar explícitamente movimiento/foco del canvas. E1–E7 no son Fases 1–7: el MD 01 tiene exit gates propios, no se aprueban automáticamente por estas mediciones.
+**Balance:** E1/E3/E4 básico y E7 validados en escenarios previos; pack y movimiento/foco del diagnóstico confirmados en ambos. E5/E6 se actualizó localmente al nuevo L1. Falta probar esa revisión en Qollab y adaptar/recorrer el juego con Jhoan. El diagnóstico cumple F0 básico; no valida automáticamente F1/F2/F3.
 
 ## 7. Entrega implementada para Jhoan
 
@@ -219,7 +223,7 @@ Rama: `feat/juanjo-quantum-engine`, actualizada con `origin/main` incluyendo ass
 - `quantum/rules.py`: transiciones puras, medición explícita, gate budget y terminales. Reusado por gameplay, BFS y verificador.
 - `quantum/sampling.py`: counts empíricos, fuente efectiva, filtro de resultados imposibles, envío global único y fallback Qiskit. `precompute` comparte una tarea para llamadas concurrentes; no retry remoto.
 - `quantum/enumerate.py`, `quantum/verify.py`: catálogo BFS y verificación exacta de políticas adaptativas con DAG de soluciones mínimas bajo la métrica gates en peor rama, luego mediciones.
-- `levels/level1.json`–`level3.json`: cinco etapas, schema v2, mapas 20×12 y columnas centrales 9–10 bloqueadas. Celdas `[fila,columna]` base 0, terminales con IDs, CX control/target. Narración inglesa máximo dos líneas de cuarenta caracteres; `glitch` es informativo, no implementa la regla de reset propuesta por el equipo.
+- `levels/level1.json`–`level3.json`: cuatro etapas actuales (nuevo L1 una, L2 dos, L3 una), schema v2, mapas 20×12 y columnas centrales 9–10 bloqueadas. Coordenadas `[fila,columna]`. L1 usa CX de Bob; L3 compartida. Narración máximo dos líneas de cuarenta caracteres; ruido/glitch no introduce reset automático.
 - `docs/snapshot-example.json`: snapshot real de L2/opposites antes de precompute, no un resultado de backend inventado.
 - `quantum/tests/`: física, API, etapas, assets, sampling, errores/concurrencia y verificación. `requirements-dev.txt` y `pytest.ini` para entorno local.
 
@@ -247,13 +251,13 @@ Snapshots v2 separan `initial_circuit` de `history` (acciones únicamente). `amp
 
 ### Pack global vigente (nuevo contrato del equipo)
 
-Nueve pares prioritarios: Φ⁺, los cuatro estados computacionales, Ψ⁺, Φ⁻, |+⟩Alice|0⟩Bob y |−⟩Alice|0⟩Bob. Cubren inicios, las ramas de victoria y soluciones canónicas; otros once estados del catálogo quedan con fuente local explícita. En Forte (29 qubits) se usan dieciocho, debajo del máximo catorce pares. Backend con capacidad menor reduce el pack, no fuerza veinte qubits. `packed_manifest` vincula cada state_key con sus qubits/bits clásicos y el resultado conjunto se marginaliza por par.
+Diez pares prioritarios: |++⟩, Φ⁺, los cuatro estados computacionales, Ψ⁺, Φ⁻, |+⟩Alice|0⟩Bob y |−⟩Alice|0⟩Bob. Cubren inicios, las ramas de victoria y soluciones canónicas; otros once estados del catálogo quedan con fuente local explícita. En Forte (29 qubits) se usan veinte, debajo del máximo catorce pares. Backend con capacidad menor reduce el pack, no fuerza veinte qubits. `packed_manifest` vincula cada state_key con sus qubits/bits clásicos y el resultado conjunto se marginaliza por par.
+
+**La lista anterior describe el pack histórico probado.** Nuevo L1 elimina |++⟩ y el catálogo pasa de 21 a 20; las prioridades locales actuales son cuatro computacionales, cuatro Bell (se agrega Ψ⁻), |+0⟩ y |−0⟩: diez pares/veinte qubits, otros diez estados locales. El cambio se verificó localmente; no reinterpretar los reportes Qollab anteriores como prueba del manifest nuevo.
 
 **Evidencia actual:** pack de diez pares probado localmente y **con el motor completo en Qollab Python**, en built-in y Forte. Ambos devolvieron `states:21,circuits:1,strategy:packed,submitted_states:10,backend_states:10,source:mixed,submission_attempted:true,reason:null`, con 200 shots. Gates/medición de L2/opposites y reset pasaron; ambas medidas usaron fuente backend. Esto sustituye la duda de compatibilidad de veinte qubits, no demuestra aún JS/canvas/1P/2P ni las otras etapas jugadas. Si el envío falla, el motor continúa local sin segundo job. `single` solo se elige antes del primer precompute en un nuevo Run.
 
-(after L1 changed to start at |00⟩ the campaign has 20 states and the pack is 9 pairs, not 21 / 10; Qollab pack run must be repeated). Los números de esta evidencia y de los reportes de §8 (`states:21`, diez pares) son los medidos con el pack anterior.
-
-El panel de probabilidades de dieciocho bits es el resultado **conjunto de los nueve pares independientes**: el motor extrae cada par mediante `packed_manifest`. No son veinte personajes, un nivel de veinte qubits ni una distribución de dos qubits mal formateada. `mixed` significa nueve estados de backend y once locales; no un error. Los tiempos UI incluyen carga/runtime/espera; no sirven para E7. No calcular una tasa de ruido global a partir de esos listados sin separar soporte/marginales por estado.
+El panel de probabilidades de veinte bits es el resultado **conjunto de los diez pares independientes**: el motor extrae cada par mediante `packed_manifest`. No son veinte personajes, un nivel de veinte qubits ni una distribución de dos qubits mal formateada. `mixed` significa diez estados de backend y once locales; no un error. Los tiempos UI incluyen carga/runtime/espera; no sirven para E7. No calcular una tasa de ruido global a partir de esos listados sin separar soporte/marginales por estado.
 
 ### E5/E6 local — resultado reproducible
 
@@ -261,13 +265,12 @@ Entorno probado: Python 3.14.7, Qiskit 2.5.2, numpy 2.3.5. No son necesariamente
 
 | Etapa | Estados físicos | Nodos lógicos | P a ciegas | P óptima por intento | Gates mínimas, peor rama |
 |---|---|---|---|---|---|
-| L1 independent | 9 | 9 | 0.5 | 0.5 | 0 |
-| L1 entangled | 3 | 7 | 1 | 1 | 0 |
+| L1 bell_preparation | 4 | 12 | 0 (medir bloqueado) | 1 | 2 + RUN obligatorio |
 | L2 opposites | 6 | 14 | 0 | 1 | 1 |
 | L2 feed-forward | 6 | 14 | 0.5 | 1 | 1 |
 | L3 core | 20 | 245 | 0 | 1 | 3 |
 
-Unión de campaña: **20 estados físicos**. L3 sin CX alcanza como máximo **0.5**, por tanto no tiene política determinista bajo estas reglas y presupuesto. El verificador incluye la solución canónica CX,Z,H y sus alternativas mínimas; feed-forward requiere una política condicionada, no una lista fija. Todas las recetas del catálogo se comprobaron localmente equivalentes y sin reset. Esto no sustituye test remoto del lote (no soportado) ni walkthrough espacial.
+Unión actual de campaña: **20 estados físicos** tras revisar L1 (la histórica tenía 21). L1 sin CX tiene éxito 0; el DAG incluye RUN entre gates y medidas. L3 sin CX sigue máximo 0.5 y mínimo determinista tres gates. Todas las recetas equivalentes/sin reset se probaron localmente; no sustituye Qollab del cambio ni walkthrough espacial.
 
 Desde la raíz del repo, después de instalar `requirements-dev.txt` en un virtualenv:
 ```bash
@@ -296,7 +299,7 @@ Después de resolver el merge pasaron **111 tests Python y 124 tests JS**, sin f
 - `dev/qollab-bridge/` contiene un diagnóstico **separado**, no reemplaza el frontend de Jhoan: llama a la fachada con `callPromising`, recibe counts, permite mover un cuadrado y mide eventos gates/measure/snapshot.
 - Cargar sus archivos como `index.html`, `main.js`, `probe.js`, `main.css`, `requirements.txt` en la raíz de un proyecto JS de prueba, junto a `quantum/`, `levels/` y el OGG. No modificar el proyecto Python ya validado. Referencia oficial: https://qollab.xyz/learn/docs/js-qiskit-projects.
 - El diagnóstico hace un solo precompute; excluye su tiempo de E7. Tres iteraciones de calentamiento, veinte muestras por operación; reporta p50/p95/máximo de llamada+JSON, sin DOM/render. Si p95 gates/medición excede 20 ms, E7 no alcanza el objetivo: registrar y optimizar con evidencia.
-- El proyecto ya demostró puente/counts/E7 en ambos. El usuario aún no confirmó movimiento/foco del canvas; falta ese chequeo para F0 básico. No demuestra el exit gate F1 del juego completo con colisiones, terminal CX y 1P/2P.
+- El proyecto demostró puente/counts/E7 y Juanjo confirmó movimiento/foco en ambos: F0 básico del diagnóstico comprobado. No demuestra F1 del juego completo con colisiones, CX y 1P/2P ni el protocolo L1 recién revisado.
 - Después, entregar a Samuel el texto técnico en inglés de aproximadamente 300 palabras basado en evidencia, y cerrar con Jhoan la adaptación v2 y los recorridos.
 
 Validación del diagnóstico: tres tests de JS cubren llamada async/errores JSON, percentiles y un solo precompute con veinte muestras tras calentamiento. Suite **111 tests Python + 127 tests JS** pasó; los tiempos reales, distintos de esos tests, están en §8.
@@ -309,9 +312,9 @@ El bloque siguiente está entregado para edición, no implica que el juego JS es
 >
 > Python and Qiskit are the quantum source of truth. The engine evolves a full-precision Statevector, computes probabilities and reduced-state entanglement, and projects only the qubit explicitly measured. Correlation can make Bob's state definite without marking it measured: Bob can still apply a correction based on Alice's classically communicated result. Once a qubit is explicitly measured, gameplay gates touching it are rejected. Terminal uses and gate budgets are enforced by the same rules used by the solver.
 >
-> Qollab's IonQ integration accepted individual circuits but rejected circuit lists during our experiments. We therefore prepare nine priority two-qubit states as independent pairs in one eighteen-qubit circuit and submit it once per execution. A classical-bit manifest extracts each pair's empirical counts from the joint result. Other reachable states use Qiskit sampling, and the engine reports backend, local, or mixed sources. Resets and level changes do not submit additional jobs.
+> Qollab's IonQ integration accepted individual circuits but rejected circuit lists during our experiments. We therefore prepare ten priority two-qubit states as independent pairs in one twenty-qubit circuit and submit it once per execution. A classical-bit manifest extracts each pair's empirical counts from the joint result. Other reachable states use Qiskit sampling, and the engine reports backend, local, or mixed sources. Resets and level changes do not submit additional jobs.
 >
-> The complete Python probe passed on Qollab's built-in simulator and IonQ Forte 1 simulator. Local verification enumerated twenty physical states and confirmed the intended level strategies, including a three-gate deterministic core solution. Without gameplay CNOT, that core's best success probability is one half. The independent opening stage intentionally remains probabilistic.
+> The previous Python probe passed on Qollab's built-in and Forte simulators. The revised calibration starts at zero: players must prepare and validate a Bell pair before measuring; matching zero bits alone cannot unlock doors. Local verification now covers twenty physical states, while the revised opening still needs a Qollab walkthrough.
 >
 > Backend statistics remain separate from ideal probabilities; incompatible outcomes are filtered or sampled locally with diagnostics. This is not a continuous noisy hardware trajectory. A separate Qollab JavaScript probe measured gate and measurement p95 latency at or below 1.5 milliseconds on both tested backends; the complete gameplay walkthrough remains an integration check.
 
@@ -346,12 +349,47 @@ Ambos reportes: `states:21`, `circuits:1`, `strategy:packed`, `submitted_states:
 - Built-in: `00:102,11:98`, total 200; soporte ideal de Φ⁺.
 - Forte: `00:110,11:87,10:1,01:2`, total 200; tres shots (1.5 %) fuera del soporte ideal.
 - Ese 1.5 % es incompatibilidad observada de **este par** en un simulador remoto, no tasa global de error ni medición de hardware real. Medir en Z no identifica todos los errores de fase. El muestreo posterior sigue las reglas de estado ideal/filtrado documentadas, no una trayectoria física ruidosa.
-- El histograma de dieciocho bits es el job empaquetado completo, no los dos qubits del nivel; para debugger usar marginal de `sampling.counts` del estado.
+- El histograma de veinte bits es el job empaquetado completo, no los dos qubits del nivel; para debugger usar marginal de `sampling.counts` del estado.
 
 ### Qué sigue, sin más experimentos redundantes
 
-1. Conservar los dos proyectos de prueba y sus salidas. Confirmar en el JS: clic/foco y mover el cuadrado con teclado en ambos backends; esta acción visual no aparece en el JSON.
-2. Jhoan adapta su frontend `test`/v1 al contrato real v2: elegir etapa, convertir coordenadas, pasar/consumir terminales y CX, tratar indicadores L1/no blocking, comprobar objetivo y ambas salidas, y reset/advance. Juanjo valida junto a él, no reescribe el juego a ciegas.
-3. Ejecutar el exit gate F1 del MD 01 con interfaz real: H de Alice, X de Bob, CX coordinada, medición/debugger, muerte/reset y 1P/2P; luego recorrer las cinco etapas para F2/F3. Un reporte de E7 no sustituye eso.
+1. Conservar proyectos/salidas; Juanjo ya confirmó clic/foco y movimiento del cuadrado en ambos.
+2. Adaptación Jhoan v2: etapa, coordenadas, terminal IDs y actor; L1 añade botón RUN, sensores bloqueados antes y colisiones por door_states. CX de Bob requiere control0/target1, no inferir qubit desde owner; L3 conserva ambas placas. Mantener objetivos/salidas/reset/advance.
+3. Probar F1 con interfaz real, luego recorrer las cuatro etapas actuales para F2/F3. E7 y F0 básico no sustituyen gameplay; el nuevo L1 primero debe probarse en Qollab Python.
 4. Acordar presupuesto de entidades L2/opposites y L3, y regla propuesta de glitches. IBM noise model es prueba adicional pendiente antes de entrega final, no bloqueo de E7.
 5. Samuel recibe el borrador técnico actualizado de §7 con métricas E7 verificadas. Los entregables de código/snapshot/E1–E7 de Juanjo quedan registrados; integración espacial/juego completo sigue siendo trabajo conjunto.
+
+## 9. Revisión L1 — preparación validada y desbloqueo físico
+
+Solicitud de Juanjo, 2026-10-10. Rama `feat/juanjo-l1-bell-validation`, originalmente desde main `3606b24` y actualizada con main para publicar. Inicialmente se mantuvo local; **Juanjo luego autorizó crear el PR de L1**. Los proyectos Qollab previos no se actualizan automáticamente con el push/PR y esta revisión aún necesita su prueba manual y adaptación de frontend.
+
+| Momento | Estado ideal del registro (juego) | Medición habilitada | Puertas físicas |
+|---|---|---|---|
+| Inicio | 00, circuito vacío | No | Ambas cerradas |
+| Solo H de Alice | (00+10)/√2 | No | Ambas cerradas |
+| H→CX de Bob, sin RUN | Φ⁺ | No | Ambas cerradas |
+| RUN válido | Φ⁺, prueba persistente | Sí | Ambas cerradas |
+| Una observación | 00 o 11; otra aún no observada | Sí para la restante | Ambas cerradas |
+| Ambas observadas e iguales | 00 o 11 | No quedan pendientes | Ambas abiertas |
+| Preparación incorrecta/resultados diferentes | Sin objetivo válido | Reintentar según caso | Ambas cerradas |
+
+API nueva: `run_circuit()`, JSON como las demás. Incompleto → `CIRCUIT_INCOMPLETE`; orden/estado incorrecto → `INVALID_CIRCUIT`; medir antes → `CIRCUIT_NOT_VALIDATED`; gate sin actor en L1 → `ACTOR_REQUIRED`; gates postvalidación → `CIRCUIT_LOCKED`. L2/L3 no requieren RUN y conservan llamadas anteriores. RUN repetido es idempotente incluso después de colapso, y nunca llama backend; la prueba se refiere al estado **antes** de medir, no a que el estado colapsado siga siendo Bell.
+
+```python
+engine.new_session("level1")
+engine.apply_gate("h", 0, -1, "alice_h", "alice")
+engine.apply_gate("cx", 0, 1, "bob_cx", "bob")
+engine.run_circuit()  # valida, todavía no abre ni mide
+engine.measure(0)     # puertas aún cerradas
+engine.measure(1)     # ambas abiertas si resultados iguales
+```
+
+`docs/snapshot-level1-example.json` reproduce el snapshot inicial real y está testeado; `docs/snapshot-example.json` de L2 no cambia. Separar físicamente `door_states` de `objects` evita interpretar el 0 inicial como apertura. Test BFS espacial confirma que cada salida está detrás de su puerta sin bypass; falta el walkthrough JS real.
+
+Verificación local de L1: éxito1, ciego0, sinCX0, dos gates + RUN + dos medidas; cuatro vectores/12 nodos lógicos. El catálogo usa identidad física; verificador/BFS distinguen el mismo Φ⁺ preparado y validado por la prueba/historial. Presupuesto L1: diez entidades (2 jugadores/2 sensores/2 terminales/2 puertas/2 salidas), RUN es UI, no otra entidad del mapa.
+
+La política de ruido existente no cambió: proyección ideal y filtro/fallback diagnosticado. La condición lógica rechaza medidas diferentes, pero no se introduce aquí un modelo nuevo de readout/decoherence ni se deduce entrelazamiento desde counts coincidentes. Esta variante debe probarse con el motor nuevo y el UI RUN antes de declararse jugable.
+
+Validación de esta revisión: **137 tests Python + 127 tests JS** pasaron. Revisión independiente no dejó bloqueantes; tests cubren fase global aceptada/Φ⁻ rechazado aunque tenga iguales probabilidades, actor omitido, RUN antes/después de colapso, RNG no usado antes de validar, reset/prueba, ambas ramas y ausencia de segundo job. El probe completo de L1 pasó también localmente con BasicSimulator y datos backend. No equivale a ejecutar la revisión en Qollab/Forte.
+
+Paquete manual local listo: `/home/juanm/singularity-tmp/opencode/qollab-juanjo-l1-validation.zip`, construido con el código de esta revisión. Tiene catorce archivos: `main.py` y `requirements.txt` en raíz, ocho módulos quantum, tres JSON y OGG. Crear un proyecto Python separado (por ejemplo Q-Quack L1 protocol), cargar ZIP, Run built-in y luego Forte en ejecuciones distintas. Esperar `states:20,circuits:1,submitted_states:10,backend_states:10,reason:null` y `L1 NEW PROTOCOL: OK`. Conservar proyectos anteriores y compartir ambas salidas antes de conectar el botón RUN al juego real. No usar el ZIP antiguo, que tiene el L1 anterior.

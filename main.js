@@ -30,6 +30,7 @@ const NOTES = {
   cnot_needs_both: 'CNOT needs Alice on the control and Bob on the target.',
   superposition: 'Blocked: that door is in superposition.',
   closed: 'Blocked: that door is closed.',
+  measurement_locked: 'Sensors are locked. Build H then CX, then press Space to run.',
 };
 
 const canvas = $('canvas');
@@ -258,9 +259,10 @@ async function runIntent(intent, ep) {
     const s = await call('run_circuit');
     if (ep !== epoch || !s) return;
     snap = s;
-    refresh(s.objective?.validated ? `${describeChange(prev, s, { type: 'run' })}. Both measure now.` : null, prev);
+    const validated = s.circuit_validation?.validated === true;
+    refresh(validated ? `${describeChange(prev, s, { type: 'run' })}. Both measure now.` : null, prev);
     // Sensors only fire when stepped on, so players already standing on one are measured now.
-    events = s.objective?.validated ? sensorsUnderPlayers(world, snap) : [];
+    events = validated ? sensorsUnderPlayers(world, snap) : [];
     if (!events.length) return;
   } else {
     events = intent.type === 'move'

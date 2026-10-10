@@ -164,7 +164,12 @@ class SamplingCache:
         probs = marginals(sv)[qubit]
         filtered = {}
         discarded = 0
-        if record:
+        # Only backend counts are a distribution worth replaying (hardware noise is intentional). A
+        # statevector_fallback record is just one finite 200-shot draw of the ideal state: resampling it
+        # forever would freeze that draw's quantisation error (e.g. 116/84 instead of 50/50) into every
+        # measurement of the process, so local records are never the source of an outcome.
+        replayable = record is not None and record.source == "backend"
+        if replayable:
             for bits, count in record.counts.items():
                 game = bits[::-1]
                 consistent = all(bit is None or int(game[q]) == bit for q, bit in enumerate(measured))
@@ -179,9 +184,10 @@ class SamplingCache:
             chosen = labels[int(self.rng.choice(len(labels), p=weights))]
             source, reason = record.source, record.reason
         else:
-            chosen = next(iter(self.local_counts(sv, 1)))
+            chosen = next(iter(self.local_counts(sv, 1)))  # a fresh ideal draw from the statevector
             source = "statevector_fallback"
-            reason = "incompatible_counts" if record else "not_precomputed"
+            reason = ("incompatible_counts" if replayable
+                      else record.reason if record is not None else "not_precomputed")
         return int(chosen[::-1][qubit]), {
             "source": source, "reason": reason, "discarded_shots": discarded,
             "state_key": canonical_key(sv), "conditioned": discarded > 0,

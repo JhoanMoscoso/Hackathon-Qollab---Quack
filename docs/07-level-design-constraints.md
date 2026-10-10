@@ -2,6 +2,8 @@
 
 For: Fernanda (level design). Verified by: Juanjo (E6). Status: Phase 0 tests passed on Built-in and IonQ Forte 1 remote simulator (Oct 9–10).
 
+Revision requested by Juanjo (Oct 10, submitted for PR review): Calibration Chamber now builds a Bell pair from zero and explicitly validates it before measurement/unlocking. The independent/entangled opening is historical; current L1 contract is in handoff06 §9 and `levels/level1.json`. Local verification passed; the revised Qollab protocol/full gameplay still needs testing. Existing JS diagnostic movement/focus is confirmed on both backends.
+
 ## 1. Where the game runs
 
 Whoever presses **Run** picks the backend, judges included. The game must work the same on all of them; only noise differs.
@@ -16,10 +18,11 @@ Whoever presses **Run** picks the backend, judges included. The game must work t
 ## 2. Quantum rules for every level
 
 1. **2 qubits per level.** `q0` = Alice (left room), `q1` = Bob (right room). A third shared qubit is a stretch goal for L3 only, never started before L1–L3 are playable.
-2. **Fixed gate set.** Alice: `H`, `Z`. Bob: `X`. Shared: `CX` (CNOT terminal on the central wall; needs both players). No other gates, no measuring in other bases.
+2. **Declared gate sets.** L2/L3 retain Alice H/Z, Bob X and shared CX where their JSON permits it. New L1: Alice H, Bob places CX(control=q0,target=q1) from an owner-activated terminal, not a local q1 gate or the L3 two-player terminal. No extra gates/bases.
 3. **Every interactive object is bound to one qubit** and shows one of three states: `0`, `1`, `superposition`. A superposed object can't be crossed. The JSON decides what 0 and 1 mean for each object (door opens on 0, bridge appears on 1…).
 4. **Sensor = measurement.** Stepping on it measures its qubit in the 0/1 basis. A measured qubit can't receive gates again. A qubit fixed by correlation but not yet measured still can (that is the whole idea of L2 stage 2).
 5. **Gate budget.** Each level sets `max_gates` (typically 5–6) and how many times each terminal can be used.
+6. **New L1 proof and physical locks.** Start |00>, empty circuit, doors closed. H→CX then RUN validates Phi+ and order; no measurement before validation. Both physical doors unlock only after both explicit measurements match. Quantum object value0 is not an open door; frontend uses door_states. Reset clears the validation proof. RUN consumes no gate/job.
 
 ## 3. The measurement-state budget (the main constraint)
 
@@ -34,12 +37,10 @@ Current designs:
 
 | Level | Packed states | New to the budget |
 |---|---|---|
-| L1 Calibration Chamber (one stage, starts at `\|00⟩`, RUN CIRCUIT) | Φ⁺ only (measured after the run validates it) | 1 |
+| L1 Calibration Chamber (revision) | Φ⁺ and measured outcomes 00/11; construction preview is 00→+0→Φ⁺ | Shared with existing priorities; no extra pair |
 | L2 Bell Block | Φ⁺, Ψ⁺ | 1 (Ψ⁺) |
 | L3 The Core | Φ⁺, `\|+0⟩`, `\|−0⟩`, `\|10⟩` (+ Φ⁻ / Ψ⁻ if Z is used on the entangled pair) | 3–5 |
-| **Total** | | **5–7. The default pack holds 9 pairs (Φ⁺, `\|00⟩`, `\|01⟩`, `\|10⟩`, `\|11⟩`, Ψ⁺, Φ⁻, `\|+0⟩`, `\|−0⟩`) = 18 qubits, within the 10-pair (20-qubit) pack and the 14-state hard limit.** |
-
-L1's unvalidated states (`\|00⟩` and `\|+0⟩` while building) are never measured, because the engine refuses `measure` until RUN CIRCUIT validates Φ⁺, so they need no packed slot. The old `\|++⟩` stage is gone.
+| **Total** | | **6–8 → 12–16 qubits. Fits (16 was tested).** |
 
 A new level or stage must add **at most 3–4** new measurement states. If an idea needs more, simplify it or split it into stages.
 

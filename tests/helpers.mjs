@@ -13,33 +13,16 @@ export const worldOf = (n, stageIndex = 0) => createWorld(gridOf(n, stageIndex))
 export const place = (w, id, x, y) => { w.players[id].x = x; w.players[id].y = y; };
 export const pos = (w, id) => [w.players[id].x, w.players[id].y];
 
-/** Level 1 snapshot shaped like quantum.engine.new_session('level1') (only the fields the JS reads). */
-export function l1snap({
-  doors = '1', status = 'pending', measured = [null, null], validated = false,
-  uses = { alice_h: 1, shared_cx: 1 }, marginals = [[1, 0], [1, 0]],
-} = {}) {
-  return {
-    schema_version: 2,
-    level_id: 'level1',
-    stage_id: 'calibration',
-    stage_index: 0,
-    stage_count: 1,
-    objects: { door_A: doors, door_B: doors },
-    measured,
-    marginals,
-    history: [],
-    initial_circuit: [],
-    gates_left: 2,
-    terminal_uses_left: { ...uses },
-    objective: {
-      status,
-      quantum_ready: status === 'ready',
-      failure_policy: 'retry_stage',
-      required_measurements: [0, 1],
-      requires_run: 'Phi+',
-      validated,
-    },
-  };
+const l1fixtures = JSON.parse(readFileSync(new URL('./fixtures/level1_snapshots.json', import.meta.url), 'utf8'));
+
+/**
+ * Real engine snapshot of level1 (tests/fixtures/level1_snapshots.json, generated from quantum.engine.Engine):
+ * initial | built_h | built | validated | measured_q0_0 | measured_q0_1 | complete_0 | complete_1.
+ * `patch` is shallow-merged over a deep copy, e.g. l1snap('validated', { measured: [1, null] }).
+ */
+export function l1snap(name = 'initial', patch = {}) {
+  if (!(name in l1fixtures) || name.startsWith('_')) throw new Error(`unknown level1 fixture ${name}`);
+  return { ...structuredClone(l1fixtures[name]), ...patch };
 }
 
 /** Snapshot with the object states of a level that has qubit-bound doors (level 2 opposites, level 3). */

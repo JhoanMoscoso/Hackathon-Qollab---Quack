@@ -109,26 +109,18 @@ def _equiv_up_to_phase(sv: Statevector, reference: Statevector, atol: float) -> 
     return bool(sv.equiv(reference, atol=atol, rtol=0))
 
 
-BELL_STATES = {
-    "Phi+": [1, 0, 0, 1],
-    "Phi-": [1, 0, 0, -1],
-    "Psi+": [0, 1, 1, 0],
-    "Psi-": [0, 1, -1, 0],
-}
-
-
-def bell_state(label: str) -> Statevector:
-    """Reference Bell state by label (game order), e.g. "Phi+"."""
-    if label not in BELL_STATES:
-        raise ValueError("Unknown Bell label")
-    return Statevector(np.asarray(BELL_STATES[label], dtype=complex) / np.sqrt(2))
-
-
 def bell_label(sv: Statevector) -> str | None:
     if _qubit_count(sv) != 2:
         return None
-    for label in BELL_STATES:
-        if _equiv_up_to_phase(sv, bell_state(label), 1e-6):
+    references = (
+        ("Phi+", [1, 0, 0, 1]),
+        ("Phi-", [1, 0, 0, -1]),
+        ("Psi+", [0, 1, 1, 0]),
+        ("Psi-", [0, 1, -1, 0]),
+    )
+    for label, values in references:
+        reference = Statevector(np.asarray(values, dtype=complex) / np.sqrt(2))
+        if _equiv_up_to_phase(sv, reference, 1e-6):
             return label
     return None
 

@@ -21,9 +21,9 @@ test('parses level1 as 20x12 with [y][x] tiles', () => {
   assert.equal(g.height, 12);
   assert.equal(g.tiles.length, 12);
   assert.ok(g.tiles.every((row) => row.length === 20));
-  assert.equal(g.tiles[1][1], 'A');
-  assert.equal(g.tiles[4][9], 'C');
-  assert.equal(g.tiles[4][10], 'c');
+  assert.equal(g.tiles[2][2], 'A');
+  assert.equal(g.tiles[5][16], 'C'); // Bob's CX terminal sits inside his room
+  assert.equal(g.tiles[4][9], '#'); // central wall is solid
 });
 
 test('every real level and stage parses', () => {
@@ -34,34 +34,34 @@ test('every real level and stage parses', () => {
 
 test('level1 spawns, sensors and exits in [x, y]', () => {
   const g = gridOf(1);
-  assert.deepEqual(g.spawns, { alice: [1, 1], bob: [16, 1] });
+  assert.deepEqual(g.spawns, { alice: [2, 2], bob: [17, 2] });
   assert.deepEqual(
     [...g.sensors].sort((a, b) => a.qubit - b.qubit),
-    [{ qubit: 0, cell: [2, 3] }, { qubit: 1, cell: [17, 3] }],
+    [{ qubit: 0, cell: [3, 4] }, { qubit: 1, cell: [13, 4] }],
   );
-  assert.deepEqual(g.exits, { alice: [4, 7], bob: [15, 7] });
+  assert.deepEqual(g.exits, { alice: [1, 9], bob: [18, 9] });
 });
 
-test('level1 cnot comes from the shared_cx terminal: control (9,4), target (10,4), with terminal id', () => {
+test("level1 has no co-op cnot: Bob's CX (no target_cell) is a plain owner terminal with qubit and target", () => {
   const g = gridOf(1);
-  assert.deepEqual(g.cnot, { control: [9, 4], target: [10, 4], terminalId: 'shared_cx', owner: 'shared', uses: 1 });
-  // The cx terminal is NOT also listed as a plain gate terminal.
-  assert.deepEqual(g.terminals, [{ cell: [3, 1], id: 'alice_h', gate: 'h', owner: 'alice', qubit: 0, uses: 1 }]);
+  assert.equal(g.cnot, null);
+  assert.deepEqual(g.terminals, [
+    { cell: [2, 5], id: 'alice_h', gate: 'h', owner: 'alice', qubit: 0, target: undefined, uses: 1 },
+    { cell: [16, 5], id: 'bob_cx', gate: 'cx', owner: 'bob', qubit: 0, target: 1, uses: 1 },
+  ]);
 });
 
-test('cnot cells are walkable floor-like cells in the central wall', () => {
+test('level1 central wall is solid on every row', () => {
   const g = gridOf(1);
-  assert.equal(isWall(g, 9, 4), false);
-  assert.equal(isWall(g, 10, 4), false);
   for (let y = 0; y < ROWS; y++) {
-    for (const x of WALL_COLS) assert.equal(isWall(g, x, y), y !== 4, `${x},${y}`);
+    for (const x of WALL_COLS) assert.equal(isWall(g, x, y), true, `${x},${y}`);
   }
 });
 
 test('level3 cnot comes from shared_cx / shared_cx_target inside the rooms', () => {
   const g = gridOf(3);
   assert.deepEqual(g.cnot, { control: [4, 3], target: [15, 3], terminalId: 'shared_cx', owner: 'shared', uses: 1 });
-  assert.deepEqual(g.terminals.map((t) => t.id), ['alice_h', 'alice_z', 'bob_x']);
+  assert.deepEqual(g.terminals.map((t) => t.id), ['alice_h', 'alice_z', 'bob_x']); // the co-op CX is not a plain terminal
   assert.deepEqual(g.terminals.find((t) => t.id === 'alice_z').cell, [4, 2]);
 });
 
@@ -73,11 +73,12 @@ test('objects keep blocking (default true), optional qubit, open_on, lethal, typ
   const g = gridOf(1);
   const byName = Object.fromEntries(g.objects.map((o) => [o.name, o]));
   assert.deepEqual(byName.door_A, {
-    name: 'door_A', cell: [4, 6], qubit: undefined, open_on: 0, lethal: false, blocking: true,
-    type: 'objective_controlled_joint_lock',
+    name: 'door_A', cell: [1, 8], qubit: 0, open_on: undefined, lethal: false, blocking: true,
+    type: 'validated_exit', unlock_when: 'objective_ready',
   });
-  assert.deepEqual(byName.door_B.cell, [15, 6]);
-  assert.equal(byName.door_B.qubit, undefined);
+  assert.deepEqual(byName.door_B.cell, [18, 8]);
+  assert.equal(byName.door_B.qubit, 1);
+  assert.equal(byName.door_B.open_on, undefined); // L1 doors never use open_on
   const l3 = Object.fromEntries(gridOf(3).objects.map((o) => [o.name, o]));
   assert.deepEqual([l3.bridge_A.qubit, l3.bridge_A.open_on, l3.bridge_A.lethal], [0, 1, true]);
   assert.deepEqual([l3.laser_B.qubit, l3.laser_B.open_on, l3.laser_B.lethal], [1, 0, true]);
@@ -115,7 +116,7 @@ test('object cells are not walls', () => {
 
 test('plain terminals carry id, gate, owner, qubit and uses (null = unlimited)', () => {
   assert.deepEqual(gridOf(2, 0).terminals, [
-    { cell: [14, 1], id: 'bob_x_opposites', gate: 'x', owner: 'bob', qubit: 1, uses: 1 },
+    { cell: [14, 1], id: 'bob_x_opposites', gate: 'x', owner: 'bob', qubit: 1, target: undefined, uses: 1 },
   ]);
   assert.equal(gridOf(2, 1).terminals[0].uses, null);
 });
@@ -148,9 +149,10 @@ test('terminal on a wall or out of bounds throws', () => {
   assert.throws(() => parseLevel(l), /terminal/);
 });
 
-test('cx terminal on a wall throws', () => {
-  const l = level();
-  l.terminals[1].target_cell = [10, 5]; // wall row
+test('co-op cx terminal (L3) on a wall throws', () => {
+  const l = structuredClone(view(3));
+  const cx = l.terminals.find((t) => t.target_cell);
+  cx.target_cell = [10, 0]; // wall row
   assert.throws(() => parseLevel(l), /terminal/);
 });
 
@@ -231,8 +233,8 @@ test('level 1 decorations avoid every gameplay cell and the cells in front of th
   const g = gridOf(1);
   const gameplay = new Set([
     g.spawns.alice, g.spawns.bob, ...g.sensors.map((s) => s.cell), ...g.objects.map((o) => o.cell),
-    ...g.terminals.map((t) => t.cell), g.cnot.control, g.cnot.target, g.exits.alice, g.exits.bob,
-    [4, 5], [15, 5], // cells directly in front of door_A / door_B
+    ...g.terminals.map((t) => t.cell), g.exits.alice, g.exits.bob,
+    [1, 7], [18, 7], // cells directly in front of door_A / door_B
   ].map(([x, y]) => cellKey(x, y)));
   for (const d of g.decorations) {
     for (let y = d.cell[1]; y < d.cell[1] + d.footprint[1]; y++) {

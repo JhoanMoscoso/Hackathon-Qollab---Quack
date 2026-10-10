@@ -1,0 +1,39 @@
+{
+  "num_qubits": 2,
+  "ket": "1|00⟩",
+  "amplitudes": [[1.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
+  "probs": {"00": 1.0, "10": 0.0, "01": 0.0, "11": 0.0},
+  "marginals": [[1.0, 0.0], [1.0, 0.0]],
+  "entangled": false,
+  "bell_label": null,
+  "state_key": "2b650292a514",
+  "schema_version": 2,
+  "level_id": "level1",
+  "stage_id": "bell_preparation",
+  "stage_index": 0,
+  "stage_count": 1,
+  "revision": 1,
+  "initial_circuit": [],
+  "measured": [null, null],
+  "history": [],
+  "gates_left": 2,
+  "terminal_uses_left": {"alice_h": 1, "bob_cx": 1},
+  "objects": {"door_A": "0", "door_B": "0"},
+  "objective": {
+    "status": "pending", "quantum_ready": false,
+    "failure_policy": "retry_stage", "required_measurements": [0, 1]
+  },
+  "source": "statevector_fallback",
+  "sampling": {
+    "source": "statevector_fallback", "counts": {}, "shots": 0,
+    "reason": "not_precomputed", "backend": null
+  },
+  "last_measurement": null,
+  "circuit_validation": {
+    "required": true, "validated": false, "status": "building",
+    "target_bell": "Phi+", "required_sequence": [["h", 0], ["cx", 0, 1]]
+  },
+  "measurement_enabled": false,
+  "exits_unlocked": false,
+  "door_states": {"door_A": "closed", "door_B": "closed"}
+}

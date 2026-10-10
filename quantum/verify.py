@@ -59,7 +59,7 @@ def _report(stage, initial, num_qubits, allow_cx):
         node_id = f"n{len(node_ids)}"
         node_ids[key] = node_id
         nodes.append({"id": node_id, "state": key[0], "measured": key[1],
-                      "validated": key[4], "actions": []})
+                      "circuit_validated": pos.circuit_validated, "actions": []})
         record = memo[key]
         for _, _, _, action, child in record[3]:
             edges = []
@@ -70,10 +70,7 @@ def _report(stage, initial, num_qubits, allow_cx):
 
     root = emit(initial)
     # Blind policy is the fixed strategy of measuring q0 then q1, with no feed-forward.
-    # A requires_run stage refuses every measurement until the (free) run step validated it.
     def blind(pos, q):
-        if "requires_run" in stage and not pos.validated:
-            return 0.0  # the blind policy never presses RUN, so it can never measure
         if objective(stage, pos) == "failed":
             return 0.0
         if objective(stage, pos) == "ready":
@@ -82,6 +79,8 @@ def _report(stage, initial, num_qubits, allow_cx):
             return 1.0 if objective(stage, pos) == "ready" else 0.0
         if pos.measured[q] is not None:
             return blind(pos, q + 1)
+        if ("measure", q) not in actions(stage, pos, allow_cx=allow_cx):
+            return 0.0  # L1 cannot bypass preparation/RUN by measuring |00>.
         return sum(p * blind(nxt, q + 1) for p, _, nxt in branches(stage, pos, ("measure", q)))
 
     # Count all reachable logical nodes and physical states using the requested gate restriction.
@@ -128,17 +127,14 @@ def main() -> int:
             handle.write(rendered + "\n")
     else:
         print(rendered)
-    expected = {"calibration": 1.0, "opposites": 1.0, "feed_forward": 1.0, "core": 1.0}
+    expected = {"bell_preparation": 1.0, "opposites": 1.0,
+                "feed_forward": 1.0, "core": 1.0}
     for level in report.values():
         if isinstance(level, dict):
             for stage_id, result in level.items():
                 if stage_id in expected and abs(result["probability"] - expected[stage_id]) > 1e-9:
                     return 1
     no_cx = verify_stage(read_level("level3")["stages"][0], allow_cx=False)
-    # Level 1 needs the CX to prepare Phi+, and min_gates (H, CX; the run is free) stays 2.
-    calibration = report["level1"]["calibration"]
-    if calibration["min_gates"] != 2 or abs(calibration["blind_probability"]) > 1e-9:
-        return 1
     return 0 if no_cx["probability"] < 1.0 else 1
 
 

@@ -8,7 +8,7 @@ from copy import deepcopy
 from quantum import rules
 from quantum.levels import LEVEL_IDS, audio_payload, read_level
 from quantum.sampling import SamplingCache
-from quantum.state import bell_state, canonical_key, evolve_gate, physical_snapshot
+from quantum.state import canonical_key, evolve_gate, physical_snapshot
 from qiskit.quantum_info import Statevector
 
 
@@ -97,11 +97,25 @@ class Engine:
             "gates_left": stage["max_gates"] - position.gates_used,
             "terminal_uses_left": {t["id"]: uses for t, uses in zip(stage["terminals"], position.uses_left)},
             "objects": objects, "objective": {"status": status, "quantum_ready": status == "ready",
-            "failure_policy": stage["failure_policy"], "required_measurements": stage["required_measurements"],
-            "requires_run": stage.get("requires_run", {}).get("target"), "validated": position.validated},
+            "failure_policy": stage["failure_policy"], "required_measurements": stage["required_measurements"]},
             "source": sampling["source"], "sampling": sampling,
             "last_measurement": deepcopy(self.last_measurement),
         })
+        if "validation" in stage:
+            validated = position.circuit_validated
+            circuit_status = ("complete" if status == "ready" else "failed" if status == "failed"
+                              else "measuring" if any(bit is not None for bit in position.measured)
+                              else "validated" if validated else "building")
+            unlocked = validated and status == "ready"
+            snapshot.update({
+                "circuit_validation": {"required": True, "validated": validated,
+                    "status": circuit_status, **deepcopy(stage["validation"])},
+                "measurement_enabled": validated and status == "pending",
+                "exits_unlocked": unlocked,
+                "door_states": {name: "open" if unlocked else "closed"
+                                for name, obj in stage["objects"].items()
+                                if obj.get("type") == "validated_exit"},
+            })
         return snapshot
 
     def snapshot(self):
@@ -122,30 +136,16 @@ class Engine:
         except (rules.RuleError, TypeError, ValueError) as error:
             return encode(error_payload(error))
 
-    def run_circuit(self):
-        """RUN CIRCUIT: validate the prepared state against stage["requires_run"]; free of gate budget."""
-        try:
-            self.require_session()
-            position = rules.run(self.stage, self.position)
-            if position is self.position:  # already validated: idempotent, no new history entry
-                return encode(self._snapshot())
-            self.position = position
-            self.history.append(["run"])
-            self.revision += 1
-            self.last_measurement = None
-            return encode(self._snapshot())
-        except (rules.RuleError, TypeError, ValueError) as error:
-            return encode(error_payload(error))
-
     def measure(self, qubit):
         try:
             self.require_session()
             rules.check_qubit(qubit, len(self.position.measured))
+            if "validation" in self.stage and not self.position.circuit_validated:
+                raise rules.RuleError("CIRCUIT_NOT_VALIDATED", "Use RUN CIRCUIT successfully before measuring")
             previous = self.position.measured[qubit]
             if previous is not None:
                 return encode({"qubit": qubit, "outcome": previous, "repeated": True,
                                "snapshot": self._snapshot()})
-            rules.require_validated(self.stage, self.position)
             if rules.objective(self.stage, self.position) != "pending":
                 raise rules.RuleError("STAGE_FINISHED", "Reset or advance this stage")
             outcome, details = self.sampling.measure(self.position.sv, self.position.measured, qubit)
@@ -155,6 +155,18 @@ class Engine:
             self.last_measurement = {"qubit": qubit, "outcome": outcome, **details}
             return encode({"qubit": qubit, "outcome": outcome, "repeated": False,
                            "snapshot": self._snapshot()})
+        except (rules.RuleError, TypeError, ValueError) as error:
+            return encode(error_payload(error))
+
+    def run_circuit(self):
+        try:
+            self.require_session()
+            validated = rules.run_circuit(self.stage, self.position)
+            if validated is not self.position:
+                self.position = validated
+                self.history.append(["run_circuit"])
+                self.revision += 1
+            return encode(self._snapshot())
         except (rules.RuleError, TypeError, ValueError) as error:
             return encode(error_payload(error))
 
@@ -184,16 +196,13 @@ class Engine:
             return encode(error_payload(error))
 
     def _packed_keys(self, levels):
-        """Priority pairs (<= 10): Phi+, the basis states and the states derived from Phi+.
-
-        Built explicitly so the pack does not depend on any level's layout: Phi+ is
-        measured in L1/L2/L3, Psi+ and Phi- come from L2/L3 gates on it, and CX/Z
-        give the L3 route |+0>, |-0>. Keys missing from the catalog are skipped.
-        """
-        bell = bell_state("Phi+")
-        states = [bell]
-        states.extend(Statevector.from_label(bits) for bits in ("00", "01", "10", "11"))
-        states.extend([evolve_gate(bell, "x", 1), evolve_gate(bell, "z", 0)])
+        """Ten priority pairs cover intended routes and both winning Bell branches."""
+        # L1 no longer auto-prepares Bell or has two stages. Use L2's reference;
+        # priorities are physical families, independent of a level's stage count.
+        bell = rules.start(levels[1]["stages"][0]).sv
+        psi_plus = evolve_gate(bell, "x", 1)
+        states = [Statevector.from_label(bits) for bits in ("00", "01", "10", "11")]
+        states.extend([bell, psi_plus, evolve_gate(bell, "z", 0), evolve_gate(psi_plus, "z", 0)])
         plus_zero = evolve_gate(bell, "cx", 0, 1)
         states.extend([plus_zero, evolve_gate(plus_zero, "z", 0)])
         return list(dict.fromkeys(canonical_key(sv) for sv in states))
@@ -205,9 +214,9 @@ class Engine:
                 return encode(await self.sampling.precompute(backend, {}, shots, strategy))
             levels = [self._level(level_id) for level_id in LEVEL_IDS]
             catalog = campaign_catalog(levels)
+            bell = rules.start(levels[1]["stages"][0])
             return encode(await self.sampling.precompute(backend, catalog, shots, strategy,
-                                                        canonical_key(bell_state("Phi+")),
-                                                        self._packed_keys(levels)))
+                                                        canonical_key(bell.sv), self._packed_keys(levels)))
         except (ValueError, TypeError, OSError) as error:
             return encode(error_payload(error, "PRECOMPUTE_FAILED"))
 
@@ -231,12 +240,12 @@ def apply_gate(gate, qubit, target=-1, terminal_id=None, actor=None):
     return _engine.apply_gate(gate, qubit, target, terminal_id, actor)
 
 
-def run_circuit():
-    return _engine.run_circuit()
-
-
 def measure(qubit):
     return _engine.measure(qubit)
+
+
+def run_circuit():
+    return _engine.run_circuit()
 
 
 def reset_level():

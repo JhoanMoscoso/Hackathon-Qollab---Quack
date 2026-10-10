@@ -9,13 +9,24 @@ export class Player {
 }
 
 export class Door {
-  /** `qubit` is undefined for joint locks (state still comes from snap.objects). `blocking:false` = indicator only. */
-  constructor(name, x, y, qubit, openOn, lethal, blocking = true) {
-    Object.assign(this, { name, x, y, qubit, openOn, lethal, blocking });
+  /**
+   * `qubit` is undefined for joint locks (state still comes from snap.objects). `blocking:false` = indicator only.
+   * `type: "validated_exit"` doors (L1) are driven by the engine's `snap.door_states` ("open" | "closed"), never by
+   * `objects[...]` (which keeps the quantum value of the qubit) and never by `open_on`.
+   */
+  constructor(name, x, y, qubit, openOn, lethal, blocking = true, type = undefined) {
+    Object.assign(this, { name, x, y, qubit, openOn, lethal, blocking, type });
   }
-  /** '0' | '1' | 'super', read from the snapshot. */
-  state(snap) { return snap.objects?.[this.name]; }
-  isOpen(snap) { return this.state(snap) === String(this.openOn); }
+  /** True when the engine decides this door through door_states instead of the qubit value. */
+  engineDriven(snap) { return this.type === 'validated_exit' || snap?.door_states?.[this.name] !== undefined; }
+  /** '0' | '1' | 'super' (legacy, read from snap.objects) or 'open' | 'closed' (engine-driven). */
+  state(snap) {
+    if (this.engineDriven(snap)) return snap?.door_states?.[this.name] === 'open' ? 'open' : 'closed';
+    return snap.objects?.[this.name];
+  }
+  isOpen(snap) { return this.engineDriven(snap) ? this.state(snap) === 'open' : this.state(snap) === String(this.openOn); }
+  /** Art state for the renderer: engine-driven open/closed reuse the green "0" / red "1" door art. */
+  visualState(snap) { return this.engineDriven(snap) ? (this.isOpen(snap) ? '0' : '1') : this.state(snap); }
 }
 
 export class Sensor {
@@ -26,8 +37,8 @@ export class Sensor {
 const usesOf = (uses) => uses ?? Infinity;
 
 export class GateTerminal {
-  constructor(x, y, gate, owner, uses, id) {
-    Object.assign(this, { x, y, gate, owner, uses: usesOf(uses), usesLeft: usesOf(uses), id });
+  constructor(x, y, gate, owner, uses, id, qubit = undefined, target = undefined) {
+    Object.assign(this, { x, y, gate, owner, uses: usesOf(uses), usesLeft: usesOf(uses), id, qubit, target });
   }
 }
 
@@ -48,9 +59,9 @@ export function createWorld(grid) {
   return {
     grid,
     players: { alice: new Player('alice', 0, ...alice), bob: new Player('bob', 1, ...bob) },
-    doors: grid.objects.map((o) => new Door(o.name, o.cell[0], o.cell[1], o.qubit, o.open_on, o.lethal, o.blocking)),
+    doors: grid.objects.map((o) => new Door(o.name, o.cell[0], o.cell[1], o.qubit, o.open_on, o.lethal, o.blocking, o.type)),
     sensors: grid.sensors.map((s) => new Sensor(s.qubit, s.cell[0], s.cell[1])),
-    terminals: grid.terminals.map((t) => new GateTerminal(t.cell[0], t.cell[1], t.gate, t.owner, t.uses, t.id)),
+    terminals: grid.terminals.map((t) => new GateTerminal(t.cell[0], t.cell[1], t.gate, t.owner, t.uses, t.id, t.qubit, t.target)),
     cnot: grid.cnot ? new CnotTerminal(grid.cnot.control, grid.cnot.target, grid.cnot.terminalId, grid.cnot.uses, grid.cnot.owner) : null,
     exits: ['alice', 'bob'].filter((id) => grid.exits[id]).map((id) => new Exit(id, ...grid.exits[id])),
   };
@@ -121,7 +132,10 @@ export function stepPlayer(world, playerId, dx, dy, snap) {
     return events;
   }
   const sensor = at(world.sensors, x, y);
-  if (sensor && snap.measured[sensor.qubit] == null) events.push({ type: 'measure', qubit: sensor.qubit });
+  if (sensor && snap.measured[sensor.qubit] == null) {
+    // Locked sensors (L1 before a validated RUN) explain themselves instead of calling the engine.
+    events.push(snap.measurement_enabled === false ? { type: 'info', reason: 'measurement_locked' } : { type: 'measure', qubit: sensor.qubit });
+  }
   return events;
 }
 
@@ -138,8 +152,11 @@ export function interact(world, playerId, snap) {
   if (terminal) {
     if (terminal.owner !== playerId) return [{ type: 'info', reason: 'wrong_owner' }];
     if (usesLeftOf(terminal, terminal.id, snap) <= 0) return [{ type: 'info', reason: 'terminal_used' }];
+    // Gate terminals may fix their own qubit/target (L1: Bob's CX terminal is q0 -> q1, `activation: "owner"`);
+    // `actor` is always the interacting player.
     return [{
-      type: 'gate', gate: terminal.gate, qubit: player.qubit, target: -1, terminalId: terminal.id, actor: playerId, terminal,
+      type: 'gate', gate: terminal.gate, qubit: terminal.qubit ?? player.qubit, target: terminal.target ?? -1,
+      terminalId: terminal.id, actor: playerId, terminal,
     }];
   }
 
@@ -162,11 +179,12 @@ export function consumeTerminal(terminal) {
 }
 
 /**
- * The stage is complete when the engine says the objective is ready AND each player stands on
- * their own exit. The engine decides the objective; entities never compute quantum state.
+ * The stage is complete when the engine says the objective is ready (or the exits are unlocked) AND each
+ * player stands on their own exit. The engine decides; entities never compute quantum state.
  */
 export function stageComplete(world, snap) {
-  if (snap?.objective?.status !== 'ready' || world.exits.length < 2) return false;
+  const ready = snap?.objective?.status === 'ready' || snap?.exits_unlocked === true;
+  if (!ready || world.exits.length < 2) return false;
   return world.exits.every((e) => same(world.players[e.player], [e.x, e.y]));
 }
 
@@ -177,6 +195,7 @@ export function stageComplete(world, snap) {
  */
 export function sensorsUnderPlayers(world, snap) {
   const events = [];
+  if (snap.measurement_enabled === false) return events;
   for (const player of Object.values(world.players)) {
     const sensor = at(world.sensors, player.x, player.y);
     if (sensor && snap.measured[sensor.qubit] == null && !events.some((e) => e.qubit === sensor.qubit)) {

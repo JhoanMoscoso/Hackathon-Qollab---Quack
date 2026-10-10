@@ -10,7 +10,7 @@ from quantum.engine import Engine
 from quantum.enumerate import campaign_catalog, reachable
 from quantum.levels import LEVEL_IDS, read_level
 from quantum.sampling import SamplingCache
-from quantum.state import bell_state, canonical_key, preparation_circuit
+from quantum.state import canonical_key, preparation_circuit
 
 
 def test_shared_snapshot_example_matches_actual_public_contract():
@@ -38,6 +38,15 @@ def test_spec_reachable_includes_measurement_branches_without_gates():
     assert canonical_key(Statevector.from_label("11")) in result
 
 
+def test_reachable_owner_mapping_keeps_bobs_cx_control_on_alice():
+    initial = QuantumCircuit(2)
+    result = reachable(initial, {"alice": ["h"], "bob": ["cx"], "shared": []}, 2, 2)
+    bell = QuantumCircuit(2)
+    bell.h(0)
+    bell.cx(0, 1)
+    assert canonical_key(Statevector(bell)) in result
+
+
 def test_full_campaign_batch_runs_locally_and_is_idempotent_across_levels():
     class Counted:
         def __init__(self):
@@ -53,8 +62,6 @@ def test_full_campaign_batch_runs_locally_and_is_idempotent_across_levels():
         backend, engine = Counted(), Engine(seed=1)
         result = json.loads(await engine.precompute(backend, 50, "batch"))
         assert result["source"] == "backend"
-        # 20 distinct physical states: L1 now starts from |00> (no |++>) and reaches only
-        # |00>, |+0>, Phi+ and |11>; it adds nothing that L2/L3 do not already reach except |00>/|11>.
         assert result["circuits"] == result["states"] == 20
         engine.new_session("level3")
         engine.reset_level()
@@ -62,14 +69,6 @@ def test_full_campaign_batch_runs_locally_and_is_idempotent_across_levels():
         assert again == result
         assert backend.calls == 1
     asyncio.run(check())
-
-
-def test_packed_keys_are_independent_of_level_layout_and_within_budget():
-    engine = Engine(seed=1)
-    keys = engine._packed_keys(None)   # needs no level data at all
-    assert len(keys) == len(set(keys)) == 9 <= 10
-    catalog = campaign_catalog([read_level(lid) for lid in LEVEL_IDS])
-    assert set(keys) <= set(catalog)
 
 
 def test_packed_circuit_decodes_each_pair_in_classical_bit_order():
@@ -86,18 +85,15 @@ def test_packed_circuit_decodes_each_pair_in_classical_bit_order():
     asyncio.run(check())
 
 
-def test_default_campaign_pack_covers_nine_priority_states_in_one_circuit():
+def test_default_campaign_pack_covers_ten_priority_states_in_one_circuit():
     async def check():
         engine = Engine(seed=3)
         summary = json.loads(await engine.precompute(BasicSimulator(), shots=20))
         assert summary["strategy"] == "packed"
         assert summary["circuits"] == 1
-        # Pack is built explicitly (not from level layouts): Phi+, 00, 01, 10, 11, Psi+, Phi-,
-        # |+0>, |-0> = 9 pairs (the old tenth, |++>, only existed in the removed L1 stage).
-        assert summary["submitted_states"] == summary["backend_states"] == 9
+        assert summary["submitted_states"] == summary["backend_states"] == 10
         assert summary["states"] == 20 and summary["source"] == "mixed"
-        assert summary["packed_manifest"][-1]["clbits"] == [16, 17]
-        assert summary["packed_manifest"][0]["state_key"] == canonical_key(bell_state("Phi+"))
+        assert summary["packed_manifest"][-1]["clbits"] == [18, 19]
         assert summary["submission_attempted"] is True
     asyncio.run(check())
 

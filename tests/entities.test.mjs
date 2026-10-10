@@ -21,6 +21,7 @@ test('classes expose their fields', () => {
   assert.equal(d.isOpen({ objects: { door_A: '1' } }), false);
   assert.equal(d.isOpen({ objects: { door_A: 'super' } }), false);
   assert.equal(d.state({ objects: { door_A: 'super' } }), 'super');
+  assert.equal(d.visualState({ objects: { door_A: '1' } }), '1');
   const d1 = new Door('x', 0, 0, 0, 1, true, false);
   assert.equal(d1.isOpen({ objects: { x: '1' } }), true);
   assert.equal(d1.blocking, false);
@@ -28,23 +29,27 @@ test('classes expose their fields', () => {
   const t = new GateTerminal(2, 5, 'h', 'alice', 1, 'alice_h');
   assert.deepEqual([t.usesLeft, t.id], [1, 'alice_h']);
   assert.equal(new GateTerminal(2, 5, 'x', 'bob', null, 'b').usesLeft, Infinity); // null = unlimited
+  const cx = new GateTerminal(16, 5, 'cx', 'bob', 1, 'bob_cx', 0, 1);
+  assert.deepEqual([cx.qubit, cx.target], [0, 1]);
 });
 
 test('createWorld builds level1 entities from the parsed grid', () => {
   const w = w1();
-  assert.deepEqual(pos(w, 'alice'), [1, 1]);
-  assert.deepEqual(pos(w, 'bob'), [16, 1]);
+  assert.deepEqual(pos(w, 'alice'), [2, 2]);
+  assert.deepEqual(pos(w, 'bob'), [17, 2]);
   assert.equal(w.players.alice.qubit, 0);
   assert.equal(w.players.bob.qubit, 1);
   assert.equal(w.doors.length, 2);
   assert.equal(w.sensors.length, 2);
-  assert.equal(w.terminals.length, 1); // the CX is not a plain terminal
-  assert.deepEqual(w.cnot.control, [9, 4]);
-  assert.deepEqual(w.cnot.target, [10, 4]);
-  assert.equal(w.cnot.terminalId, 'shared_cx');
+  assert.deepEqual(w.terminals.map((t) => [t.id, t.gate, t.owner, t.x, t.y, t.qubit, t.target]), [
+    ['alice_h', 'h', 'alice', 2, 5, 0, undefined],
+    ['bob_cx', 'cx', 'bob', 16, 5, 0, 1], // Bob's own terminal: a CX without target_cell is not co-op
+  ]);
+  assert.equal(w.cnot, null);
   assert.equal(w.exits.length, 2);
   const door = w.doors.find((d) => d.name === 'door_B');
-  assert.deepEqual([door.x, door.y, door.qubit, door.openOn, door.lethal, door.blocking], [15, 6, undefined, 0, false, true]);
+  assert.deepEqual([door.x, door.y, door.qubit, door.openOn, door.lethal, door.blocking, door.type],
+    [18, 8, 1, undefined, false, true, 'validated_exit']);
 });
 
 test('walls and bounds block', () => {
@@ -53,7 +58,7 @@ test('walls and bounds block', () => {
   assert.deepEqual(stepPlayer(w, 'alice', -1, 0, l1snap()), [{ type: 'blocked', reason: 'wall' }]);
   assert.deepEqual(stepPlayer(w, 'alice', 0, -1, l1snap()), [{ type: 'blocked', reason: 'wall' }]);
   assert.deepEqual(pos(w, 'alice'), [1, 1]);
-  place(w, 'alice', 9, 3);
+  place(w, 'alice', 8, 3);
   assert.equal(stepPlayer(w, 'alice', 1, 0, l1snap())[0].type, 'blocked'); // centre wall
   place(w, 'alice', 0, 0);
   assert.equal(stepPlayer(w, 'alice', -1, 0, l1snap())[0].type, 'blocked'); // out of bounds
@@ -62,58 +67,68 @@ test('walls and bounds block', () => {
 test('normal move emits move event and mutates position', () => {
   const w = w1();
   const ev = stepPlayer(w, 'alice', 1, 0, l1snap());
-  assert.deepEqual(ev, [{ type: 'move', player: 'alice', x: 2, y: 1 }]);
-  assert.deepEqual(pos(w, 'alice'), [2, 1]);
+  assert.deepEqual(ev, [{ type: 'move', player: 'alice', x: 3, y: 2 }]);
+  assert.deepEqual(pos(w, 'alice'), [3, 2]);
 });
 
-test('level1 cx niche: alice reaches (9,4), bob reaches (10,4), neither crosses', () => {
+test('level1 central wall is solid: neither player gets to columns 9 or 10 (no co-op CX niche in L1)', () => {
   const w = w1();
-  place(w, 'alice', 8, 4);
-  assert.equal(stepPlayer(w, 'alice', 1, 0, l1snap())[0].type, 'move');
-  assert.deepEqual(pos(w, 'alice'), [9, 4]);
-  assert.deepEqual(stepPlayer(w, 'alice', 1, 0, l1snap()), [{ type: 'blocked', reason: 'wall' }]);
-  assert.deepEqual(pos(w, 'alice'), [9, 4]);
-  place(w, 'alice', 1, 1);
-  place(w, 'bob', 11, 4);
-  assert.equal(stepPlayer(w, 'bob', -1, 0, l1snap())[0].type, 'move');
-  assert.deepEqual(pos(w, 'bob'), [10, 4]);
-  assert.deepEqual(stepPlayer(w, 'bob', -1, 0, l1snap()), [{ type: 'blocked', reason: 'wall' }]);
+  for (let y = 1; y <= 10; y++) {
+    place(w, 'alice', 8, y);
+    assert.deepEqual(stepPlayer(w, 'alice', 1, 0, l1snap()), [{ type: 'blocked', reason: 'wall' }], `alice row ${y}`);
+    place(w, 'bob', 11, y);
+    assert.deepEqual(stepPlayer(w, 'bob', -1, 0, l1snap()), [{ type: 'blocked', reason: 'wall' }], `bob row ${y}`);
+  }
 });
 
-test('level1 niche is reachable by walking from the spawns', () => {
+test('each player walks from the spawn to their own terminal', () => {
   const w = w1();
-  const path = (id, dx, steps) => { for (let i = 0; i < steps; i++) stepPlayer(w, id, dx, 0, l1snap()); };
-  stepPlayer(w, 'alice', 0, 1, l1snap()); stepPlayer(w, 'alice', 0, 1, l1snap()); stepPlayer(w, 'alice', 0, 1, l1snap()); // y 1 -> 4
-  path('alice', 1, 10); // x 1 -> 9 (the 10th step hits the wall)
-  assert.deepEqual(pos(w, 'alice'), [9, 4]);
-  for (let i = 0; i < 3; i++) stepPlayer(w, 'bob', 0, 1, l1snap());
-  path('bob', -1, 10);
-  assert.deepEqual(pos(w, 'bob'), [10, 4]);
+  const walk = (id, dx, dy, steps) => { for (let i = 0; i < steps; i++) stepPlayer(w, id, dx, dy, l1snap()); };
+  walk('alice', 0, 1, 3); // (2,2) -> alice_h (2,5)
+  assert.deepEqual(pos(w, 'alice'), [2, 5]);
+  walk('bob', 0, 1, 3);   // (17,2) -> (17,5)
+  walk('bob', -1, 0, 1);  // -> bob_cx (16,5)
+  assert.deepEqual(pos(w, 'bob'), [16, 5]);
 });
 
 test('players block each other', () => {
   const w = w1();
-  place(w, 'bob', 2, 1);
+  place(w, 'bob', 3, 2);
   assert.deepEqual(stepPlayer(w, 'alice', 1, 0, l1snap()), [{ type: 'blocked', reason: 'occupied' }]);
-  assert.deepEqual(pos(w, 'alice'), [1, 1]);
+  assert.deepEqual(pos(w, 'alice'), [2, 2]);
 });
 
-test('joint-lock door (no qubit) blocks until snap.objects says "0"', () => {
+test('validated_exit door follows snap.door_states, never snap.objects or open_on', () => {
   const w = w1();
-  place(w, 'alice', 4, 5);
-  assert.deepEqual(stepPlayer(w, 'alice', 0, 1, l1snap({ doors: '1' })), [{ type: 'blocked', reason: 'closed' }]);
-  assert.deepEqual(pos(w, 'alice'), [4, 5]);
-  assert.deepEqual(stepPlayer(w, 'alice', 0, 1, l1snap({ doors: 'super' })), [{ type: 'blocked', reason: 'superposition' }]);
-  assert.deepEqual(stepPlayer(w, 'alice', 0, 1, l1snap({ doors: '0', status: 'ready' })), [{ type: 'move', player: 'alice', x: 4, y: 6 }]);
-  // ...and on to the exit
-  assert.deepEqual(stepPlayer(w, 'alice', 0, 1, l1snap({ doors: '0', status: 'ready' })), [{ type: 'move', player: 'alice', x: 4, y: 7 }]);
+  place(w, 'alice', 1, 7);
+  const door = w.doors.find((d) => d.name === 'door_A');
+  // Initial: door_states closed even though objects.door_A is the quantum value "0".
+  assert.equal(l1snap().objects.door_A, '0');
+  assert.deepEqual(stepPlayer(w, 'alice', 0, 1, l1snap()), [{ type: 'blocked', reason: 'closed' }]);
+  // Validated Bell pair: objects says "super" but the door is simply closed (not "superposition").
+  assert.equal(l1snap('validated').objects.door_A, 'super');
+  assert.deepEqual(stepPlayer(w, 'alice', 0, 1, l1snap('validated')), [{ type: 'blocked', reason: 'closed' }]);
+  // One qubit measured: still closed until the whole objective is ready.
+  assert.deepEqual(stepPlayer(w, 'alice', 0, 1, l1snap('measured_q0_0')), [{ type: 'blocked', reason: 'closed' }]);
+  assert.equal(door.isOpen(l1snap('measured_q0_0')), false);
+  // Both measured and equal: open, whatever the measured value (00 or 11).
+  for (const name of ['complete_0', 'complete_1']) {
+    place(w, 'alice', 1, 7);
+    assert.equal(door.isOpen(l1snap(name)), true, name);
+    assert.deepEqual(stepPlayer(w, 'alice', 0, 1, l1snap(name)), [{ type: 'move', player: 'alice', x: 1, y: 8 }], name);
+    assert.deepEqual(stepPlayer(w, 'alice', 0, 1, l1snap(name)), [{ type: 'move', player: 'alice', x: 1, y: 9 }], name);
+  }
+  // A snapshot without door_states never opens a validated_exit door (no open_on fallback).
+  const bare = { objects: { door_A: '0', door_B: '0' }, measured: [null, null] };
+  assert.equal(door.isOpen(bare), false);
+  assert.equal(door.state(bare), 'closed');
 });
 
-test('bob joint-lock mirror: door_B at (15,6) opens on "0"', () => {
+test('bob side mirror: door_B at (18,8) opens from door_states', () => {
   const w = w1();
-  place(w, 'bob', 15, 5);
-  assert.equal(stepPlayer(w, 'bob', 0, 1, l1snap({ doors: '1' }))[0].reason, 'closed');
-  assert.equal(stepPlayer(w, 'bob', 0, 1, l1snap({ doors: '0' }))[0].type, 'move');
+  place(w, 'bob', 18, 7);
+  assert.equal(stepPlayer(w, 'bob', 0, 1, l1snap('validated'))[0].reason, 'closed');
+  assert.equal(stepPlayer(w, 'bob', 0, 1, l1snap('complete_1'))[0].type, 'move');
 });
 
 test('blocking:false door never blocks and never kills (indicator only)', () => {
@@ -121,17 +136,16 @@ test('blocking:false door never blocks and never kills (indicator only)', () => 
   v.objects.door_A.blocking = false;
   v.objects.door_A.lethal = true; // even a lethal flag must not matter for an indicator
   const w = createWorld(parseLevel(v));
-  place(w, 'alice', 4, 5);
-  for (const doors of ['1', 'super', '0']) {
-    place(w, 'alice', 4, 5);
-    assert.deepEqual(stepPlayer(w, 'alice', 0, 1, l1snap({ doors })), [{ type: 'move', player: 'alice', x: 4, y: 6 }], doors);
+  for (const name of ['initial', 'validated', 'complete_0']) {
+    place(w, 'alice', 1, 7);
+    assert.deepEqual(stepPlayer(w, 'alice', 0, 1, l1snap(name)), [{ type: 'move', player: 'alice', x: 1, y: 8 }], name);
   }
   // standing on it while closed is not a hazard either
-  assert.deepEqual(hazardCheck(w, l1snap({ doors: '1' })), []);
-  assert.deepEqual(hazardCheck(w, l1snap({ doors: 'super' })), []);
+  assert.deepEqual(hazardCheck(w, l1snap('initial')), []);
+  assert.deepEqual(hazardCheck(w, l1snap('validated')), []);
   // the other (blocking) door still blocks
-  place(w, 'bob', 15, 5);
-  assert.equal(stepPlayer(w, 'bob', 0, 1, l1snap({ doors: '1' }))[0].reason, 'closed');
+  place(w, 'bob', 18, 7);
+  assert.equal(stepPlayer(w, 'bob', 0, 1, l1snap('validated'))[0].reason, 'closed');
 });
 
 test('level3 lethal qubit-bound doors: super blocks, closed kills, open passes', () => {
@@ -155,22 +169,39 @@ test('level3 lethal qubit-bound doors: super blocks, closed kills, open passes',
   assert.deepEqual(hazardCheck(w, objSnap({ bridge_A: '1', laser_B: '0' })), []);
 });
 
-test('sensor emits measure only while its qubit is unmeasured', () => {
+test('sensor emits measure only while its qubit is unmeasured and measurement is enabled', () => {
   const w = w1();
-  place(w, 'alice', 1, 3); // sensor_q0 at (2,3)
-  const ev = stepPlayer(w, 'alice', 1, 0, l1snap({ validated: true }));
-  assert.deepEqual(ev, [{ type: 'move', player: 'alice', x: 2, y: 3 }, { type: 'measure', qubit: 0 }]);
-  place(w, 'alice', 1, 3);
-  const ev2 = stepPlayer(w, 'alice', 1, 0, l1snap({ measured: [1, null] }));
-  assert.deepEqual(ev2, [{ type: 'move', player: 'alice', x: 2, y: 3 }]);
-  place(w, 'bob', 16, 3); // sensor_q1 at (17,3)
-  assert.deepEqual(stepPlayer(w, 'bob', 1, 0, l1snap())[1], { type: 'measure', qubit: 1 });
+  place(w, 'alice', 2, 4); // sensor_q0 at (3,4)
+  const ev = stepPlayer(w, 'alice', 1, 0, l1snap('validated'));
+  assert.deepEqual(ev, [{ type: 'move', player: 'alice', x: 3, y: 4 }, { type: 'measure', qubit: 0 }]);
+  place(w, 'alice', 2, 4);
+  const ev2 = stepPlayer(w, 'alice', 1, 0, l1snap('measured_q0_0'));
+  assert.deepEqual(ev2, [{ type: 'move', player: 'alice', x: 3, y: 4 }]);
+  place(w, 'bob', 12, 4); // sensor_q1 at (13,4)
+  assert.deepEqual(stepPlayer(w, 'bob', 1, 0, l1snap('validated'))[1], { type: 'measure', qubit: 1 });
+});
+
+test('sensor before a validated RUN gives a hint instead of a measure event (no engine call)', () => {
+  const w = w1();
+  for (const name of ['initial', 'built_h', 'built']) {
+    const snap = l1snap(name);
+    assert.equal(snap.measurement_enabled, false, name);
+    place(w, 'alice', 2, 4);
+    assert.deepEqual(stepPlayer(w, 'alice', 1, 0, snap), [
+      { type: 'move', player: 'alice', x: 3, y: 4 }, { type: 'info', reason: 'measurement_locked' },
+    ], name);
+  }
+  // Stages without the flag (L2/L3) keep measuring on contact.
+  const legacy = l1snap('initial');
+  delete legacy.measurement_enabled;
+  place(w, 'alice', 2, 4);
+  assert.deepEqual(stepPlayer(w, 'alice', 1, 0, legacy)[1], { type: 'measure', qubit: 0 });
 });
 
 test('gate terminal: event payload carries terminalId, actor and target -1; interact does not consume', () => {
   const w = w1();
   const t = w.terminals[0];
-  place(w, 'alice', 3, 1);
+  place(w, 'alice', 2, 5);
   assert.deepEqual(interact(w, 'alice', l1snap()), [
     { type: 'gate', gate: 'h', qubit: 0, target: -1, terminalId: 'alice_h', actor: 'alice', terminal: t },
   ]);
@@ -181,32 +212,47 @@ test('gate terminal: event payload carries terminalId, actor and target -1; inte
   assert.equal(t.usesLeft, 0); // never negative
 });
 
+test("Bob's own CX terminal (no target_cell) is a normal owner terminal: q0 -> q1, actor is bob", () => {
+  const w = w1();
+  const t = w.terminals.find((x) => x.id === 'bob_cx');
+  place(w, 'bob', 16, 5);
+  assert.deepEqual(interact(w, 'bob', l1snap('built_h')), [
+    { type: 'gate', gate: 'cx', qubit: 0, target: 1, terminalId: 'bob_cx', actor: 'bob', terminal: t },
+  ]);
+  // No partner needed, and only the owner can use it.
+  place(w, 'alice', 16, 5);
+  place(w, 'bob', 17, 2);
+  assert.deepEqual(interact(w, 'alice', l1snap()), [{ type: 'info', reason: 'wrong_owner' }]);
+  assert.equal(w.cnot, null);
+});
+
 test('terminal: wrong owner, exhausted (local fallback without terminal_uses_left), reset', () => {
   const w = w1();
   const t = w.terminals[0];
-  place(w, 'bob', 3, 1);
-  place(w, 'alice', 1, 1);
+  place(w, 'bob', 2, 5);
+  place(w, 'alice', 2, 2);
   assert.deepEqual(interact(w, 'bob', l1snap()), [{ type: 'info', reason: 'wrong_owner' }]);
-  place(w, 'alice', 3, 1);
+  place(w, 'alice', 2, 5);
+  place(w, 'bob', 17, 2);
   consumeTerminal(t);
   const noUses = { ...l1snap() };
   delete noUses.terminal_uses_left;
   assert.deepEqual(interact(w, 'alice', noUses), [{ type: 'info', reason: 'terminal_used' }]);
   resetWorld(w);
   assert.equal(t.usesLeft, 1);
-  assert.deepEqual(pos(w, 'alice'), [1, 1]);
-  assert.deepEqual(pos(w, 'bob'), [16, 1]);
+  assert.deepEqual(pos(w, 'alice'), [2, 2]);
+  assert.deepEqual(pos(w, 'bob'), [17, 2]);
 });
 
 test('terminal uses come from snap.terminal_uses_left when present (engine is the source of truth)', () => {
   const w = w1();
   const t = w.terminals[0];
-  place(w, 'alice', 3, 1);
+  place(w, 'alice', 2, 5);
   // engine says used up even though the local counter was never decremented
-  assert.deepEqual(interact(w, 'alice', l1snap({ uses: { alice_h: 0, shared_cx: 1 } })), [{ type: 'info', reason: 'terminal_used' }]);
+  assert.deepEqual(interact(w, 'alice', l1snap('built_h')), [{ type: 'info', reason: 'terminal_used' }]);
   // engine says one use left even though the local counter hit 0 (e.g. after a stage reset)
   t.usesLeft = 0;
-  assert.equal(interact(w, 'alice', l1snap({ uses: { alice_h: 1, shared_cx: 1 } }))[0].type, 'gate');
+  assert.equal(interact(w, 'alice', l1snap('initial'))[0].type, 'gate');
 });
 
 test('uses: null means unlimited (level2 feed_forward bob_x)', () => {
@@ -230,32 +276,31 @@ test('interact on an empty cell does nothing', () => {
   assert.deepEqual(interact(w1(), 'alice', l1snap()), []);
 });
 
-test('cnot needs alice on the control and bob on the target (payload carries terminalId; actor is the terminal owner "shared")', () => {
-  const w = w1();
-  place(w, 'alice', 9, 4);
-  assert.deepEqual(interact(w, 'alice', l1snap()), [{ type: 'info', reason: 'cnot_needs_both' }]);
-  place(w, 'bob', 10, 4);
+test('level3 cnot needs alice on the control and bob on the target (payload carries terminalId; actor is the terminal owner "shared")', () => {
+  const w = worldOf(3);
+  const snap = objSnap({}, { terminal_uses_left: { shared_cx: 1 } });
+  place(w, 'alice', 4, 3);
+  assert.deepEqual(interact(w, 'alice', snap), [{ type: 'info', reason: 'cnot_needs_both' }]);
+  place(w, 'bob', 15, 3);
   // The engine matches `actor` against the terminal owner ('shared'), whoever presses E.
   const expected = [{
     type: 'cnot', gate: 'cx', qubit: 0, target: 1, terminalId: 'shared_cx', actor: 'shared', terminal: w.cnot,
   }];
-  assert.deepEqual(interact(w, 'alice', l1snap()), expected);
-  assert.deepEqual(interact(w, 'bob', l1snap()), expected);
+  assert.deepEqual(interact(w, 'alice', snap), expected);
+  assert.deepEqual(interact(w, 'bob', snap), expected);
   // only bob at the target: not enough
   place(w, 'alice', 1, 1);
-  assert.deepEqual(interact(w, 'bob', l1snap()), [{ type: 'info', reason: 'cnot_needs_both' }]);
+  assert.deepEqual(interact(w, 'bob', snap), [{ type: 'info', reason: 'cnot_needs_both' }]);
 });
 
 test('cnot uses: engine terminal_uses_left wins, local counter is the fallback', () => {
-  const w = w1();
-  place(w, 'alice', 9, 4);
-  place(w, 'bob', 10, 4);
-  assert.deepEqual(interact(w, 'alice', l1snap({ uses: { alice_h: 0, shared_cx: 0 } })), [{ type: 'info', reason: 'terminal_used' }]);
+  const w = worldOf(3);
+  place(w, 'alice', 4, 3);
+  place(w, 'bob', 15, 3);
+  assert.deepEqual(interact(w, 'alice', objSnap({}, { terminal_uses_left: { shared_cx: 0 } })), [{ type: 'info', reason: 'terminal_used' }]);
   consumeTerminal(w.cnot);
-  const noUses = { ...l1snap() };
-  delete noUses.terminal_uses_left;
-  assert.deepEqual(interact(w, 'alice', noUses), [{ type: 'info', reason: 'terminal_used' }]);
-  assert.equal(interact(w, 'alice', l1snap())[0].type, 'cnot'); // engine says 1 left
+  assert.deepEqual(interact(w, 'alice', objSnap({})), [{ type: 'info', reason: 'terminal_used' }]);
+  assert.equal(interact(w, 'alice', objSnap({}, { terminal_uses_left: { shared_cx: 1 } }))[0].type, 'cnot'); // engine says 1 left
   resetWorld(w);
   assert.equal(w.cnot.usesLeft, 1);
 });
@@ -270,45 +315,55 @@ test('level3 cnot sits inside the rooms: control (4,3), target (15,3)', () => {
 
 test('syncTerminalUses copies engine uses onto the local counters', () => {
   const w = w1();
-  syncTerminalUses(w, l1snap({ uses: { alice_h: 0, shared_cx: 1 } }));
-  assert.deepEqual([w.terminals[0].usesLeft, w.cnot.usesLeft], [0, 1]);
+  syncTerminalUses(w, l1snap('initial', { terminal_uses_left: { alice_h: 0, bob_cx: 1 } }));
+  assert.deepEqual(w.terminals.map((t) => t.usesLeft), [0, 1]);
   syncTerminalUses(w, { objects: {} }); // no field: leave as is
   assert.equal(w.terminals[0].usesLeft, 0);
-  syncTerminalUses(w, l1snap({ uses: { alice_h: null } })); // null = unlimited
+  syncTerminalUses(w, l1snap('initial', { terminal_uses_left: { alice_h: null } })); // null = unlimited
   assert.equal(w.terminals[0].usesLeft, Infinity);
 });
 
 test('stageComplete: objective ready AND alice on exit_A AND bob on exit_B', () => {
   const w = w1();
-  const ready = l1snap({ doors: '0', status: 'ready', measured: [0, 0], validated: true });
-  place(w, 'alice', 4, 7);
-  place(w, 'bob', 15, 7);
-  assert.equal(stageComplete(w, ready), true);
-  assert.equal(stageComplete(w, l1snap({ doors: '0', status: 'pending' })), false);
-  assert.equal(stageComplete(w, l1snap({ status: 'failed', measured: [0, 1] })), false);
+  for (const name of ['complete_0', 'complete_1']) {
+    const ready = l1snap(name);
+    place(w, 'alice', 1, 9);
+    place(w, 'bob', 18, 9);
+    assert.equal(stageComplete(w, ready), true, name);
+    place(w, 'bob', 18, 8);
+    assert.equal(stageComplete(w, ready), false); // bob not on exit
+    place(w, 'bob', 18, 9);
+    place(w, 'alice', 1, 8);
+    assert.equal(stageComplete(w, ready), false); // alice not on exit
+    place(w, 'alice', 18, 9); // alice on bob's exit does not count
+    place(w, 'bob', 1, 9);
+    assert.equal(stageComplete(w, ready), false);
+  }
+  place(w, 'alice', 1, 9);
+  place(w, 'bob', 18, 9);
+  assert.equal(stageComplete(w, l1snap('validated')), false);
+  assert.equal(stageComplete(w, l1snap('measured_q0_0')), false);
+  assert.equal(stageComplete(w, l1snap('validated', { measured: [0, 1], objective: { status: 'failed' } })), false);
   assert.equal(stageComplete(w, undefined), false);
   assert.equal(stageComplete(w, { objective: {} }), false);
-  place(w, 'bob', 15, 6);
-  assert.equal(stageComplete(w, ready), false); // bob not on exit
-  place(w, 'bob', 15, 7);
-  place(w, 'alice', 4, 6);
-  assert.equal(stageComplete(w, ready), false); // alice not on exit
-  place(w, 'alice', 15, 7); // alice on bob's exit does not count
-  place(w, 'bob', 4, 7);
-  assert.equal(stageComplete(w, ready), false);
+  // exits_unlocked alone (without objective.status) also counts; explicit false does not.
+  assert.equal(stageComplete(w, { objective: {}, exits_unlocked: true }), true);
+  assert.equal(stageComplete(w, { objective: { status: 'ready' }, exits_unlocked: false }), true);
+  assert.equal(stageComplete(w, { objective: {}, exits_unlocked: false }), false);
 });
 
 test('stageComplete is false for a world without two exits', () => {
   const w = w1();
   w.exits = w.exits.slice(0, 1);
-  place(w, 'alice', 4, 7);
-  assert.equal(stageComplete(w, l1snap({ status: 'ready' })), false);
+  place(w, 'alice', 1, 9);
+  assert.equal(stageComplete(w, l1snap('complete_0')), false);
 });
 
 test('objectiveFailed reads objective.status', () => {
-  assert.equal(objectiveFailed(l1snap({ status: 'failed' })), true);
-  assert.equal(objectiveFailed(l1snap({ status: 'ready' })), false);
-  assert.equal(objectiveFailed(l1snap({ status: 'pending' })), false);
+  const withStatus = (status) => l1snap('validated', { objective: { status } });
+  assert.equal(objectiveFailed(withStatus('failed')), true);
+  assert.equal(objectiveFailed(withStatus('ready')), false);
+  assert.equal(objectiveFailed(withStatus('pending')), false);
   assert.equal(objectiveFailed(undefined), false);
   assert.equal(objectiveFailed({}), false);
 });
@@ -319,27 +374,28 @@ test('bit-based checkWin is gone', () => {
 
 test('hazardCheck: non-lethal door never kills', () => {
   const w = w1();
-  place(w, 'alice', 4, 6);
-  assert.deepEqual(hazardCheck(w, l1snap({ doors: '1' })), []);
+  place(w, 'alice', 1, 8);
+  assert.deepEqual(hazardCheck(w, l1snap('validated')), []);
 });
 
 test('sensorsUnderPlayers: players already on an unmeasured sensor produce measure events (post-Run re-fire)', () => {
   const w = w1();
-  place(w, 'alice', 2, 3); // sensor_q0
-  assert.deepEqual(sensorsUnderPlayers(w, l1snap({ validated: true })), [{ type: 'measure', qubit: 0 }]);
-  place(w, 'bob', 17, 3); // sensor_q1
-  assert.deepEqual(sensorsUnderPlayers(w, l1snap({ validated: true })), [
+  place(w, 'alice', 3, 4); // sensor_q0
+  assert.deepEqual(sensorsUnderPlayers(w, l1snap('validated')), [{ type: 'measure', qubit: 0 }]);
+  place(w, 'bob', 13, 4); // sensor_q1
+  assert.deepEqual(sensorsUnderPlayers(w, l1snap('validated')), [
     { type: 'measure', qubit: 0 }, { type: 'measure', qubit: 1 },
   ]);
 });
 
-test('sensorsUnderPlayers: nothing for measured qubits or players off their sensors', () => {
+test('sensorsUnderPlayers: nothing for measured qubits, players off their sensors or locked measurement', () => {
   const w = w1();
-  assert.deepEqual(sensorsUnderPlayers(w, l1snap({ validated: true })), []);
-  place(w, 'alice', 2, 3);
-  assert.deepEqual(sensorsUnderPlayers(w, l1snap({ validated: true, measured: [1, null] })), []);
-  place(w, 'alice', 1, 3);
-  assert.deepEqual(sensorsUnderPlayers(w, l1snap({ validated: true })), []);
+  assert.deepEqual(sensorsUnderPlayers(w, l1snap('validated')), []);
+  place(w, 'alice', 3, 4);
+  assert.deepEqual(sensorsUnderPlayers(w, l1snap('measured_q0_1')), []);
+  assert.deepEqual(sensorsUnderPlayers(w, l1snap('built')), []); // measurement_enabled false: no engine call
+  place(w, 'alice', 2, 4);
+  assert.deepEqual(sensorsUnderPlayers(w, l1snap('validated')), []);
 });
 
 test('decorations never block: every covered floor cell can be walked onto and across', () => {
@@ -367,12 +423,12 @@ test('decorations never block: every covered floor cell can be walked onto and a
 test('walking a straight line across the mat, grate row and tank column raises no blocked events', () => {
   const w = w1();
   const snap = l1snap();
-  place(w, 'alice', 4, 3);
-  for (const x of [5, 6, 7]) assert.equal(stepPlayer(w, 'alice', 1, 0, snap)[0].type, 'move', `mat row x=${x}`);
+  place(w, 'alice', 3, 6);
+  for (const x of [4, 5, 6]) assert.equal(stepPlayer(w, 'alice', 1, 0, snap)[0].type, 'move', `mat row x=${x}`);
   place(w, 'alice', 7, 3);
   for (const y of [2, 1]) assert.equal(stepPlayer(w, 'alice', 0, -1, snap)[0].type, 'move', `tank column y=${y}`); // tank_a (7,1)-(7,2)
-  place(w, 'bob', 11, 3);
-  for (const x of [12, 13, 14]) assert.equal(stepPlayer(w, 'bob', 1, 0, snap)[0].type, 'move', `bob mat row x=${x}`);
+  place(w, 'bob', 16, 6);
+  for (const x of [15, 14, 13]) assert.equal(stepPlayer(w, 'bob', -1, 0, snap)[0].type, 'move', `bob mat row x=${x}`);
   place(w, 'bob', 12, 3);
   for (const y of [2, 1]) assert.equal(stepPlayer(w, 'bob', 0, -1, snap)[0].type, 'move', `tank_b column y=${y}`);
 });

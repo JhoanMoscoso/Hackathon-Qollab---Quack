@@ -274,11 +274,12 @@ function drawIndicator(ctx, door, state, x, y) {
 function drawDoor(ctx, door, snap, t, reduceMotion) {
   const x = px(door.x);
   const y = px(door.y);
-  const state = snap.objects?.[door.name];
+  const state = door.visualState(snap); // engine-driven doors (door_states) map to the "0" open / "1" closed art
   const cx = x + CELL / 2;
   const cy = y + CELL / 2;
   if (door.blocking === false) return drawIndicator(ctx, door, state, x, y);
-  const joint = door.qubit === undefined; // bound to the stage objective, not to a qubit: shown as a lock
+  // Bound to the stage objective / the validated circuit, not to the qubit value: shown as a padlock while locked.
+  const joint = door.qubit === undefined || door.engineDriven(snap);
   if (hasSprite(`door_${state}`)) {
     drawDoorSprite(ctx, door, snap, state, x, y, t, reduceMotion);
     if (joint && state === '1') {

@@ -43,12 +43,29 @@ def test_coroutine_load_level_is_awaited():
     assert isinstance(json.loads(text), dict)
 
 
-def test_run_circuit_before_building_reports_mismatch():
+def test_run_circuit_before_building_reports_incomplete():
     engine_server.dispatch("load_level", ["level1"])
     engine_server.dispatch("new_session", ["level1"])
     status, payload = body(engine_server.dispatch("run_circuit", []))
     assert status == 200
-    assert payload["code"] == "CIRCUIT_MISMATCH"
+    assert payload["code"] == "CIRCUIT_INCOMPLETE"
+
+
+def test_phi_plus_measurement_through_the_dev_server_is_not_a_fixed_outcome():
+    """User report: after H, CX, RUN the first outcome was always 00. Through dispatch (precompute + new_session
+    + gates + run + measure) both outcomes must appear, in a mix that is not stuck on either value."""
+    engine_server.dispatch("precompute", [None, 200])
+    outcomes = []
+    for _ in range(120):
+        engine_server.dispatch("new_session", ["level1"])
+        engine_server.dispatch("apply_gate", ["h", 0, -1, None, "alice"])
+        engine_server.dispatch("apply_gate", ["cx", 0, 1, None, "bob"])
+        engine_server.dispatch("run_circuit", [])
+        status, payload = body(engine_server.dispatch("measure", [0]))
+        assert status == 200 and "error" not in payload
+        outcomes.append(payload["outcome"])
+    assert 0.25 < sum(outcomes) / len(outcomes) < 0.75, outcomes
+    assert len(set(outcomes)) == 2
 
 
 def test_precompute_backend_argument_is_replaced_with_none(monkeypatch):

@@ -36,7 +36,6 @@ export function stageView(level, stageIndex) {
     decorations: (stage.decorations ?? []).map(convertDecoration),
     win: stage.win,
     failure_policy: stage.failure_policy,
-    requires_run: stage.requires_run,
     narration: stage.narration ?? {},
     initial_circuit: stage.initial_circuit ?? [],
     gate_set: stage.gate_set,

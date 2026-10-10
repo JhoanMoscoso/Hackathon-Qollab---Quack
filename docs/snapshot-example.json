@@ -24,8 +24,7 @@
   },
   "objective": {
     "status": "pending", "quantum_ready": false,
-    "failure_policy": "death", "required_measurements": [0, 1],
-    "requires_run": null, "validated": false
+    "failure_policy": "death", "required_measurements": [0, 1]
   },
   "source": "statevector_fallback",
   "sampling": {

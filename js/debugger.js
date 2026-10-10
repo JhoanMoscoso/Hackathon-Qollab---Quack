@@ -21,7 +21,7 @@ function toColumns(entries, extra = {}) {
     if (!Array.isArray(entry) || entry.length === 0) continue;
     const [name, a, b] = entry;
     const key = String(name).toLowerCase();
-    if (key === 'run') cols.push({ kind: 'run', label: 'RUN', ...extra });
+    if (key === 'run' || key === 'run_circuit') cols.push({ kind: 'run', label: 'RUN', ...extra });
     else if (key === 'cx') cols.push({ kind: 'cx', label: 'CX', control: a, target: b, ...extra });
     else if (MEASURE_NAMES.has(key)) cols.push({ kind: 'm', label: 'M', qubit: a, outcome: b, ...extra });
     else cols.push({ kind: 'gate', label: String(name).toUpperCase().slice(0, 3), qubit: a, ...extra });
@@ -51,13 +51,26 @@ export function samplingLabel(snapSource, boot) {
   return 'local';
 }
 
-/** Status rows under the circuit. The Circuit row exists only for stages that need a run. */
+const CIRCUIT_STATUS = {
+  building: 'building', validated: 'validated ✓', measuring: 'measuring', complete: 'complete ✓', failed: 'failed',
+};
+const lockText = (unlocked) => (unlocked ? 'unlocked' : 'locked');
+
+/**
+ * Status rows under the circuit. Circuit / Measurement / Exits exist only for stages with a validated
+ * preparation (snap.circuit_validation, snap.measurement_enabled, snap.exits_unlocked).
+ */
 export function statusRows(snap, boot) {
   if (!snap) return [];
   const rows = [];
-  if (snap.objective?.requires_run) {
-    rows.push({ name: 'Circuit', value: snap.objective.validated ? 'validated ✓' : 'building' });
+  const validation = snap.circuit_validation;
+  if (validation?.required) {
+    rows.push({ name: 'Circuit', value: CIRCUIT_STATUS[validation.status] ?? validation.status ?? '-' });
   }
+  if (typeof snap.measurement_enabled === 'boolean') {
+    rows.push({ name: 'Measurement', value: lockText(snap.measurement_enabled) });
+  }
+  if (typeof snap.exits_unlocked === 'boolean') rows.push({ name: 'Exits', value: lockText(snap.exits_unlocked) });
   rows.push({ name: 'Objective', value: snap.objective?.status ?? '-' });
   rows.push({ name: 'Stage', value: `${(snap.stage_index ?? 0) + 1} / ${snap.stage_count ?? 1}` });
   rows.push({ name: 'Sampling', value: samplingLabel(snap.source, boot) });
@@ -107,10 +120,11 @@ export function changedBars(prev, next) {
 }
 
 const HINTS = {
-  CIRCUIT_MISMATCH: "Circuit isn't Phi+ yet. Press R to reset.",
-  NOT_VALIDATED: 'Build the circuit, then press Space to run it.',
+  CIRCUIT_NOT_VALIDATED: 'Build H then CX, then press Space to run.',
+  CIRCUIT_INCOMPLETE: 'Build H then CX, then press Space to run.',
+  INVALID_CIRCUIT: "Circuit isn't Phi+ yet — press R to reset.",
   CIRCUIT_LOCKED: 'Circuit already validated — measure now.',
-  RUN_NOT_REQUIRED: 'This stage has no run step.',
+  VALIDATION_NOT_REQUIRED: 'This stage has no run step.',
   STAGE_FINISHED: 'Stage finished — head to the exits.',
   INVALID_ACTOR: "That terminal isn't yours.",
   GATE_NOT_ALLOWED: "That terminal isn't yours.",
@@ -250,7 +264,7 @@ export function createDebugger({ state: stateEl, circuit: circuitEl }, liveEl) {
   const bellEl = stat('Bell state');
   const entangledEl = stat('Entangled');
   const statusEls = {};
-  for (const name of ['Circuit', 'Objective', 'Stage', 'Sampling']) {
+  for (const name of ['Circuit', 'Measurement', 'Exits', 'Objective', 'Stage', 'Sampling']) {
     const dt = htmlEl('dt', null, name);
     const dd = htmlEl('dd', null, '-');
     stats.append(dt, dd);

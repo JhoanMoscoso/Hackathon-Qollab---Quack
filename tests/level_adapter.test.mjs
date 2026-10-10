@@ -8,36 +8,48 @@ test('level1 stage 0 becomes a flat view with the stage fields', () => {
   const level = loadLevel(1);
   const v = stageView(level, 0);
   assert.equal(v.id, 'level1');
-  assert.equal(v.stageId, 'calibration');
-  assert.equal(v.title, 'Calibration Chamber');
+  assert.equal(v.stageId, 'bell_preparation');
+  assert.equal(v.title, 'Build, Run, Measure and Escape'); // stage title wins over level.title
   assert.deepEqual(v.map, level.stages[0].map);
   assert.deepEqual(v.legend, level.stages[0].legend);
   assert.deepEqual(v.objects, level.stages[0].objects);
   assert.deepEqual(v.win, { parity: 'equal' });
   assert.equal(v.failure_policy, 'retry_stage');
-  assert.deepEqual(v.requires_run, { target: 'Phi+' });
+  assert.equal('requires_run' in v, false); // L1 validation lives in the engine (circuit_validation), not in the view
   assert.deepEqual(v.initial_circuit, []);
-  assert.deepEqual(v.gate_set, { alice: ['h'], bob: [], shared: ['cx'] });
+  assert.deepEqual(v.gate_set, { alice: ['h'], bob: ['cx'], shared: [] });
   assert.equal(v.max_gates, 2);
-  assert.equal(v.narration.run_ok, 'Phi+ validated. Both measure now.');
+  assert.match(v.narration.circuit_validated, /Bell state verified/);
+  assert.ok(v.narration.validation_failed);
 });
 
 test('terminal cells are converted from [row, col] to [x, y]', () => {
   const v = stageView(loadLevel(1), 0);
   const h = v.terminals.find((t) => t.id === 'alice_h');
-  assert.deepEqual(h.cell, [3, 1]); // v2 [row 1, col 3]
-  assert.equal(v.map[1][3], 'H');   // the map agrees: x=3, y=1
+  assert.deepEqual(h.cell, [2, 5]); // v2 [row 5, col 2]
+  assert.equal(v.map[5][2], 'H');   // the map agrees: x=2, y=5
   assert.deepEqual([h.gate, h.owner, h.qubit, h.uses], ['h', 'alice', 0, 1]);
 });
 
-test('cx terminal converts cell and target_cell, keeps target and id', () => {
+test("Bob's L1 cx terminal has no target_cell: cell is converted, qubit/target/activation are kept", () => {
   const v = stageView(loadLevel(1), 0);
-  const cx = v.terminals.find((t) => t.id === 'shared_cx');
-  assert.deepEqual(cx.cell, [9, 4]);
-  assert.deepEqual(cx.target_cell, [10, 4]);
+  const cx = v.terminals.find((t) => t.id === 'bob_cx');
+  assert.deepEqual(cx.cell, [16, 5]);
+  assert.equal('target_cell' in cx, false);
+  assert.deepEqual([cx.gate, cx.owner, cx.qubit, cx.target, cx.uses, cx.activation], ['cx', 'bob', 0, 1, 1, 'owner']);
+  assert.equal(v.map[5][16], 'C');
+});
+
+test('level3 co-op cx terminal converts cell and target_cell, keeps target and id', () => {
+  const cx = stageView(loadLevel(3), 0).terminals.find((t) => t.id === 'shared_cx');
+  assert.deepEqual(cx.cell, [4, 3]);
+  assert.deepEqual(cx.target_cell, [15, 3]);
   assert.deepEqual([cx.gate, cx.owner, cx.qubit, cx.target, cx.uses], ['cx', 'shared', 0, 1, 1]);
-  assert.equal(v.map[4][9], 'C');
-  assert.equal(v.map[4][10], 'c');
+});
+
+test('validated_exit doors keep type, qubit and unlock_when', () => {
+  const v = stageView(loadLevel(1), 0);
+  assert.deepEqual(v.objects.door_A, { type: 'validated_exit', qubit: 0, blocking: true, unlock_when: 'objective_ready' });
 });
 
 test('level3 converts every terminal, including unlimited-use ones kept as null', () => {
@@ -85,8 +97,8 @@ test('decorations convert cell [row, col] -> [x, y] and keep sprite + footprint 
   assert.equal(v.decorations.length, level.stages[0].decorations.length);
   const tank = v.decorations.find((d) => d.sprite === 'tank_a');
   assert.deepEqual(tank, { sprite: 'tank_a', cell: [7, 1], footprint: [1, 2] }); // v2 [row 1, col 7]
-  const mat = v.decorations.find((d) => d.sprite === 'floor_mat' && d.cell[0] === 13);
-  assert.deepEqual(mat, { sprite: 'floor_mat', cell: [13, 3], footprint: [2, 1] });
+  const mat = v.decorations.find((d) => d.sprite === 'floor_mat' && d.cell[0] === 14);
+  assert.deepEqual(mat, { sprite: 'floor_mat', cell: [14, 6], footprint: [2, 1] }); // v2 [row 6, col 14]
   // the input is not mutated
   assert.deepEqual(level.stages[0].decorations.find((d) => d.sprite === 'tank_a').cell, [1, 7]);
 });

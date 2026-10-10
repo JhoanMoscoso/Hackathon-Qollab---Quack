@@ -69,9 +69,11 @@ export function parseLevel(level) {
       else if (name === 'exit_B') grid.exits.bob = cell;
       else if (sensor) grid.sensors.push({ qubit: Number(sensor[1]), cell });
       else if (name in objectCfg) {
-        const { qubit, open_on, lethal, blocking, type } = objectCfg[name];
+        const { qubit, open_on, lethal, blocking, type, unlock_when } = objectCfg[name];
         // qubit is undefined for objective-bound joint locks; blocking:false = indicator only
-        grid.objects.push({ name, cell, qubit, open_on, lethal: !!lethal, blocking: blocking !== false, type });
+        grid.objects.push({
+          name, cell, qubit, open_on, lethal: !!lethal, blocking: blocking !== false, type, unlock_when,
+        });
       }
     }
   }
@@ -94,14 +96,16 @@ export function parseLevel(level) {
     return [cell[0], cell[1]];
   };
   for (const t of terminalCfg) {
-    if (t.gate === 'cx' && t.target_cell) { // shared CX: control cell + target cell, never a plain gate terminal
+    // Co-op CX (L3): control cell + target cell, never a plain gate terminal. A CX without target_cell
+    // (L1: Bob's own terminal, activation "owner") is an ordinary owner terminal below.
+    if (t.gate === 'cx' && t.target_cell) {
       grid.cnot = {
         control: checkCell(t.cell), target: checkCell(t.target_cell), terminalId: t.id, owner: t.owner, uses: t.uses,
       };
       continue;
     }
     grid.terminals.push({
-      cell: checkCell(t.cell), id: t.id, gate: t.gate, owner: t.owner, qubit: t.qubit, uses: t.uses,
+      cell: checkCell(t.cell), id: t.id, gate: t.gate, owner: t.owner, qubit: t.qubit, target: t.target, uses: t.uses,
     });
   }
 

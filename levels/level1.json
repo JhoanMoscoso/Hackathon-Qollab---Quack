@@ -4,101 +4,76 @@
   "title": "Calibration Chamber",
   "num_qubits": 2,
   "coordinate_convention": "[row, column], zero-based; map rows are listed top to bottom",
-  "design_notes": "Both qubits start in |00> with an empty circuit and locked doors. Alice places H on q0, then Alice (control cell, col 9) and Bob (target cell, col 10) use the shared CX in the central-wall niche, preparing Phi+. RUN CIRCUIT (requires_run) validates the prepared state; measuring before validation and gate use after it are refused by the engine. Both players then measure in Z: equal results (00 or 11) open door_A and door_B, which are bound to the joint objective (no qubit); different results fail the stage (retry_stage). The shared debugger communicates classical measurement records; neither player can signal through entanglement.",
-  "integration_status": "requires_js_walkthrough",
+  "design_notes": "Construction and physical unlocking are separate. Start in |00> with no prepared gates. Alice places H(q0), then Bob places CX(q0,q1); Bob owns the placement terminal, not the control qubit. RUN CIRCUIT checks the ordered preparation and the target Phi+ modulo global phase. Measurements are blocked until that validation, and both physical doors remain closed until both explicit results match. Both 00 and 11 open both doors; local open_on bits are deliberately absent. RUN CIRCUIT validates locally against the precomputed reference and never submits another backend job. Classical debugger communication is required; entanglement does not send a message.",
+  "integration_status": "requires_js_protocol_and_walkthrough",
+  "integration_notes": "10 physical entities: two players, two sensors, two gate terminals, two doors and two exits. Add a RUN CIRCUIT UI button bound to engine.run_circuit(); disable sensors until measurement_enabled and drive collision/door art from door_states. The Bob-owned CX terminal activates from Bob's room and is not the shared two-player terminal used in L3. Reachable exits are behind their respective physical doors; JS still confirms both players at exits.",
   "stages": [
     {
-      "id": "calibration",
-      "title": "Calibration Chamber",
+      "id": "bell_preparation",
+      "title": "Build, Run, Measure and Escape",
       "initial_circuit": [],
-      "gate_set": {"alice": ["h"], "bob": [], "shared": ["cx"]},
+      "gate_set": {"alice": ["h"], "bob": ["cx"], "shared": []},
       "max_gates": 2,
+      "validation": {
+        "target_bell": "Phi+",
+        "required_sequence": [["h", 0], ["cx", 0, 1]]
+      },
       "win": {"parity": "equal"},
       "required_measurements": [0, 1],
       "failure_policy": "retry_stage",
-      "requires_run": {"target": "Phi+"},
       "map": [
         "####################",
-        "#A.H.....##.....B..#",
         "#........##........#",
-        "#.S......##......s.#",
-        "#........Cc........#",
+        "#.A......##......B.#",
         "#........##........#",
-        "####D##########d####",
-        "####E##########e####",
-        "####################",
-        "####################",
-        "####################",
+        "#..S.....##..s.....#",
+        "#.H......##.....C..#",
+        "#........##........#",
+        "#........##........#",
+        "#D#......##......#d#",
+        "#E#......##......#e#",
+        "#.#......##......#.#",
         "####################"
       ],
       "legend": {
-        "A": "alice_start",
-        "B": "bob_start",
-        "S": "sensor_q0",
-        "s": "sensor_q1",
-        "E": "exit_A",
-        "e": "exit_B",
-        "D": "door_A",
-        "d": "door_B",
-        "H": "alice_h",
-        "C": "shared_cx",
-        "c": "shared_cx_target",
-        "#": "wall",
-        ".": "floor"
+        "#": "wall", ".": "floor",
+        "A": "alice_start", "B": "bob_start",
+        "S": "sensor_q0", "s": "sensor_q1",
+        "H": "alice_h", "C": "bob_cx",
+        "D": "door_A", "d": "door_B",
+        "E": "exit_A", "e": "exit_B"
       },
       "objects": {
-        "door_A": {
-          "type": "objective_controlled_joint_lock",
-          "guards": "exit_A",
-          "open_on": 0,
-          "blocking": true,
-          "lethal": false
-        },
-        "door_B": {
-          "type": "objective_controlled_joint_lock",
-          "guards": "exit_B",
-          "open_on": 0,
-          "blocking": true,
-          "lethal": false
-        }
+        "door_A": {"type": "validated_exit", "qubit": 0, "blocking": true, "unlock_when": "objective_ready"},
+        "door_B": {"type": "validated_exit", "qubit": 1, "blocking": true, "unlock_when": "objective_ready"}
       },
       "terminals": [
-        {"id": "alice_h", "cell": [1, 3], "gate": "h", "owner": "alice", "qubit": 0, "uses": 1},
-        {
-          "id": "shared_cx",
-          "cell": [4, 9],
-          "target_cell": [4, 10],
-          "gate": "cx",
-          "owner": "shared",
-          "qubit": 0,
-          "target": 1,
-          "uses": 1
-        }
+        {"id": "alice_h", "cell": [5, 2], "gate": "h", "owner": "alice", "qubit": 0, "uses": 1},
+        {"id": "bob_cx", "cell": [5, 16], "gate": "cx", "owner": "bob", "qubit": 0, "target": 1, "activation": "owner", "uses": 1}
       ],
       "decorations": [
         {"sprite": "tank_a", "cell": [1, 7], "footprint": [1, 2]},
-        {"sprite": "wall_light", "cell": [0, 5], "footprint": [1, 1]},
-        {"sprite": "plant", "cell": [4, 1], "footprint": [1, 1]},
-        {"sprite": "floor_mat", "cell": [3, 5], "footprint": [2, 1]},
-        {"sprite": "floor_grate", "cell": [5, 6], "footprint": [1, 1]},
-        {"sprite": "floor_grate", "cell": [5, 7], "footprint": [1, 1]},
         {"sprite": "tank_b", "cell": [1, 12], "footprint": [1, 2]},
+        {"sprite": "wall_light", "cell": [0, 5], "footprint": [1, 1]},
         {"sprite": "wall_light", "cell": [0, 14], "footprint": [1, 1]},
-        {"sprite": "plant", "cell": [4, 18], "footprint": [1, 1]},
-        {"sprite": "floor_mat", "cell": [3, 13], "footprint": [2, 1]},
-        {"sprite": "floor_grate", "cell": [5, 12], "footprint": [1, 1]},
-        {"sprite": "floor_grate", "cell": [5, 13], "footprint": [1, 1]}
+        {"sprite": "plant", "cell": [1, 1], "footprint": [1, 1]},
+        {"sprite": "plant", "cell": [1, 18], "footprint": [1, 1]},
+        {"sprite": "floor_mat", "cell": [6, 4], "footprint": [2, 1]},
+        {"sprite": "floor_mat", "cell": [6, 14], "footprint": [2, 1]},
+        {"sprite": "floor_grate", "cell": [7, 5], "footprint": [1, 1]},
+        {"sprite": "floor_grate", "cell": [7, 6], "footprint": [1, 1]},
+        {"sprite": "floor_grate", "cell": [7, 13], "footprint": [1, 1]},
+        {"sprite": "floor_grate", "cell": [7, 14], "footprint": [1, 1]}
       ],
       "narration": {
-        "enter": "Qubits start at |00>.\nBuild a Bell pair, then run it.",
-        "first_gate": "Alice: H on q0. Then both use CX.",
-        "first_measure": "Debugger shares classical results.",
-        "death": "Results differ. Reset and retry.",
-        "glitch": "Fallback: sampled locally with Qiskit.",
-        "win": "Matching bits unlock both doors.",
-        "run_ok": "Phi+ validated. Both measure now.",
-        "run_fail": "Not Phi+ yet. Press R to reset.",
-        "not_validated": "Run the circuit before measuring."
+        "enter": "Build H on Alice, then Bob's CX.\nDoors stay locked until you run.",
+        "first_gate": "Place H first, then CX(0,1).\nRUN CIRCUIT checks the Bell state.",
+        "validation_failed": "Circuit not ready: use H, then CX.\nReset the stage and try again.",
+        "circuit_validated": "Bell state verified. Doors stay shut.\nMeasure both qubits to unlock them.",
+        "first_measure": "You measured one qubit.\nBoth results must match to unlock.",
+        "death": "No exit yet: complete the protocol.\nReset and prepare the Bell pair.",
+        "glitch": "Backend data disagrees with ideal.\nSee the sampling diagnostics.",
+        "win": "Bell verified; matching bits measured.\nBoth doors are open. Reach the exits."
       }
     }
   ]

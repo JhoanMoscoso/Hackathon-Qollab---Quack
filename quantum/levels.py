@@ -6,8 +6,6 @@ import base64
 import json
 from copy import deepcopy
 
-from quantum.state import BELL_STATES
-
 LEVEL_IDS = ("level1", "level2", "level3")
 
 
@@ -38,6 +36,8 @@ def validate_level(level: dict) -> dict:
             raise ValueError("gate_set must define alice, bob and shared")
         for owner, gates in gate_set.items():
             allowed = {"cx"} if owner == "shared" else {"h", "z", "x"}
+            if owner == "bob":
+                allowed.add("cx")  # L1: Bob places the q0-controlled pair operation.
             if not isinstance(gates, list) or any(g not in allowed for g in gates):
                 raise ValueError("Invalid gate set")
         circuit = stage.get("initial_circuit")
@@ -52,6 +52,23 @@ def validate_level(level: dict) -> dict:
                 raise ValueError("Invalid initial gate qubit")
             if op[0] == "cx" and op[1] == op[2]:
                 raise ValueError("CX needs different operands")
+        validation = stage.get("validation")
+        if validation is not None:
+            if (not isinstance(validation, dict)
+                    or validation.get("target_bell") not in {"Phi+", "Phi-", "Psi+", "Psi-"}
+                    or not isinstance(validation.get("required_sequence"), list)
+                    or not validation["required_sequence"]):
+                raise ValueError("Invalid circuit validation protocol")
+            if circuit:
+                raise ValueError("Validated construction must start with an empty circuit")
+            for op in validation["required_sequence"]:
+                if (not isinstance(op, list) or not op or op[0] not in {"h", "x", "z", "cx"}
+                        or len(op) != (3 if op[0] == "cx" else 2)
+                        or any(not integer(q, upper=2) for q in op[1:])
+                        or (op[0] == "cx" and op[1] == op[2])):
+                    raise ValueError("Invalid validation gate sequence")
+            if len(validation["required_sequence"]) > stage["max_gates"]:
+                raise ValueError("Validation sequence exceeds gate budget")
         win = stage.get("win")
         if not isinstance(win, dict) or not win:
             raise ValueError("Missing win condition")
@@ -69,12 +86,6 @@ def validate_level(level: dict) -> dict:
             raise ValueError("Win qubits must be explicitly measured")
         if stage.get("failure_policy") not in {"retry_stage", "death"}:
             raise ValueError("Invalid failure policy")
-        if "requires_run" in stage:
-            run_rule = stage["requires_run"]
-            if (not isinstance(run_rule, dict) or set(run_rule) != {"target"}
-                    or not isinstance(run_rule["target"], str)
-                    or run_rule["target"] not in BELL_STATES):
-                raise ValueError("requires_run needs a Bell target label")
         grid = stage.get("map")
         if (not isinstance(grid, list) or not grid or len(grid) > 12
                 or not all(isinstance(row, str) for row in grid)
@@ -95,7 +106,12 @@ def validate_level(level: dict) -> dict:
         for obj in objects.values():
             if not isinstance(obj, dict):
                 raise ValueError("Object definitions must be dictionaries")
-            if "qubit" in obj:
+            if obj.get("type") == "validated_exit":
+                if (validation is None or not integer(obj.get("qubit"), upper=2)
+                        or obj.get("unlock_when") != "objective_ready"
+                        or obj.get("blocking") is not True or "open_on" in obj):
+                    raise ValueError("Validated exits unlock through the objective, not a local bit")
+            elif "qubit" in obj:
                 if not integer(obj["qubit"], upper=2) or not integer(obj.get("open_on"), upper=2):
                     raise ValueError("Invalid quantum object")
             elif obj.get("type") != "objective_controlled_joint_lock":
@@ -121,19 +137,30 @@ def validate_level(level: dict) -> dict:
             owner, gate = terminal.get("owner"), terminal.get("gate")
             if owner not in gate_set or gate not in gate_set[owner]:
                 raise ValueError("Terminal must belong to its owner's gate set")
-            expected_qubit = 1 if owner == "bob" else 0
+            expected_qubit = 0 if gate == "cx" else 1 if owner == "bob" else 0
             if type(terminal.get("qubit")) is not int or terminal["qubit"] != expected_qubit:
                 raise ValueError("Terminal qubit does not match its owner")
             if check_cell(terminal.get("cell")) != tid:
                 raise ValueError("Terminal cell must reference its id in legend")
             if gate == "cx":
-                if type(terminal.get("target")) is not int or terminal["target"] != 1 or check_cell(terminal.get("target_cell")) != tid + "_target":
-                    raise ValueError("Shared CX needs q0 control and q1 target cell")
+                if type(terminal.get("target")) is not int or terminal["target"] != 1:
+                    raise ValueError("CX requires q0 control and q1 target")
+                if owner == "shared":
+                    if check_cell(terminal.get("target_cell")) != tid + "_target":
+                        raise ValueError("Shared CX needs a target cell for coordinated activation")
+                elif owner != "bob" or terminal.get("activation") != "owner" or "target_cell" in terminal:
+                    raise ValueError("Bob's CX requires owner activation, not shared target cells")
             elif "target" in terminal:
                 raise ValueError("Single-qubit terminal has no target")
             uses = terminal.get("uses")
             if uses is not None and not integer(uses, lower=1):
                 raise ValueError("Terminal uses must be positive or null")
+        if validation is not None:
+            for op in validation["required_sequence"]:
+                if not any(t["gate"] == op[0] and t["qubit"] == op[1]
+                           and t.get("target", -1) == (op[2] if len(op) == 3 else -1)
+                           for t in terminals):
+                    raise ValueError("Validation gates need corresponding terminals")
         known_labels = {"wall", "floor", "region_separator", "alice_start", "bob_start",
                         "sensor_q0", "sensor_q1", "exit_A", "exit_B"}
         known_labels |= set(objects) | terminal_ids | {t + "_target" for t in terminal_ids}
