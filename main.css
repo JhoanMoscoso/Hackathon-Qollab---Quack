@@ -61,6 +61,7 @@ button:hover { border-color: var(--alice); }
 .level-select { border: 2px solid var(--border); border-radius: 6px; padding: 8px 16px 12px; margin: 16px 0 0; max-width: 28rem; }
 .level-select legend { padding: 0 6px; font-weight: 600; }
 .level-select label { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; }
+.level-select label:has(input:disabled) { opacity: 0.55; cursor: not-allowed; }
 .level-select input { width: 18px; height: 18px; accent-color: var(--alice); }
 
 .menu-actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
@@ -125,6 +126,7 @@ button:hover { border-color: var(--alice); }
 .dbg-msg.is-error { color: var(--error); }
 
 #menu-error { color: var(--error); font-weight: 600; max-width: 70ch; }
+#menu-note { font-weight: 600; max-width: 70ch; }
 
 #narrator:empty { display: none; }
 #narrator { flex-basis: 100%; }

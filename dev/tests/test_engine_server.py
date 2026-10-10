@@ -91,8 +91,10 @@ def server():
     httpd.server_close()
 
 
-def fetch(url, data=None):
-    request = urllib.request.Request(url, data=data, method="POST" if data is not None else "GET")
+def fetch(url, data=None, headers=None):
+    hdrs = {"Content-Type": "application/json"} if data is not None else {}
+    hdrs.update(headers or {})
+    request = urllib.request.Request(url, data=data, method="POST" if data is not None else "GET", headers=hdrs)
     try:
         with urllib.request.urlopen(request) as response:
             return response.status, response.headers, response.read()
@@ -153,3 +155,106 @@ def test_server_binds_loopback_only():
         assert httpd.server_address[0] == "127.0.0.1"
     finally:
         httpd.server_close()
+
+
+def raw(server, request_bytes, read=True):
+    import socket
+    host, port = server.removeprefix("http://").split(":")
+    with socket.create_connection((host, int(port)), timeout=10) as sock:
+        sock.sendall(request_bytes)
+        chunks = []
+        while read:
+            chunk = sock.recv(65536)
+            if not chunk:
+                break
+            chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def test_handler_has_a_socket_timeout():
+    assert engine_server.Handler.timeout == 5
+
+
+def test_idle_connection_does_not_block_the_server(server):
+    import socket
+    import time
+    host, port = server.removeprefix("http://").split(":")
+    idle = socket.create_connection((host, int(port)))  # connects, sends nothing
+    try:
+        start = time.monotonic()
+        status, _, _ = fetch(server + "/dev/")
+        assert status == 200
+        assert time.monotonic() - start < 8
+    finally:
+        idle.close()
+
+
+def test_negative_and_oversized_content_length_are_400(server):
+    for length in ("-1", str(64 * 1024 + 1), "abc"):
+        reply = raw(server, (f"POST /engine/snapshot HTTP/1.0\r\nContent-Type: application/json\r\n"
+                             f"Content-Length: {length}\r\n\r\n").encode())
+        assert reply.startswith(b"HTTP/1.0 400"), (length, reply[:40])
+        assert b"BAD_REQUEST" in reply
+
+
+def test_foreign_host_header_is_403(server):
+    reply = raw(server, b"GET /dev/ HTTP/1.0\r\nHost: evil.example\r\n\r\n")
+    assert reply.startswith(b"HTTP/1.0 403") and b"FORBIDDEN_HOST" in reply
+    reply = raw(server, (b"POST /engine/snapshot HTTP/1.0\r\nHost: evil.example\r\n"
+                         b"Content-Type: application/json\r\nContent-Length: 2\r\n\r\n{}"))
+    assert reply.startswith(b"HTTP/1.0 403") and b"FORBIDDEN_HOST" in reply
+
+
+def test_localhost_and_loopback_hosts_are_allowed(server):
+    port = server.rsplit(":", 1)[1]
+    for host in (f"localhost:{port}", f"127.0.0.1:{port}"):
+        status, _, _ = fetch(server + "/dev/", headers={"Host": host})
+        assert status == 200, host
+    # right name, wrong port (DNS rebinding to another local service) is refused
+    status, _, _ = fetch(server + "/dev/", headers={"Host": "localhost:1"})
+    assert status == 403
+
+
+def test_post_requires_json_content_type(server):
+    for ctype in ("text/plain", "application/x-www-form-urlencoded", None):
+        request = urllib.request.Request(server + "/engine/snapshot", data=b"{}", method="POST")
+        request.remove_header("Content-type")
+        if ctype:
+            request.add_header("Content-Type", ctype)
+        try:
+            urllib.request.urlopen(request)
+            raise AssertionError("expected 415")
+        except urllib.error.HTTPError as error:
+            assert error.code == 415, ctype
+    status, _, _ = fetch(server + "/engine/snapshot", b"{}", headers={"Content-Type": "application/json; charset=utf-8"})
+    assert status == 200
+
+
+@pytest.mark.parametrize("path", [
+    "/dev/", "/dev/index.html", "/dev/engine_bridge.js", "/index.html", "/main.js", "/main.css",
+    "/js/state.js", "/levels/level1.json",
+])
+def test_allowed_static_paths(server, path):
+    status, _, _ = fetch(server + path)
+    assert status == 200, path
+
+
+@pytest.mark.parametrize("path", [
+    "/.git/config", "/quantum/engine.py", "/dev/engine_server.py", "/dev/tests/test_engine_server.py",
+    "/docs/06-handoff-juanjo.md", "/requirements-dev.txt", "/tests/helpers.mjs", "/dev/__pycache__/x.pyc",
+    "/js/../quantum/engine.py", "/js/%2e%2e/quantum/engine.py", "/jsx/state.js", "/main.js.bak",
+])
+def test_everything_else_is_404(server, path):
+    reply = raw(server, f"GET {path} HTTP/1.0\r\n\r\n".encode())
+    assert reply.startswith(b"HTTP/1.0 404"), (path, reply[:40])
+
+
+def test_root_redirects_to_dev(server):
+    reply = raw(server, b"GET / HTTP/1.0\r\n\r\n")
+    assert reply.startswith(b"HTTP/1.0 302") and b"Location: /dev/" in reply
+
+
+def test_allowlist_function_unit():
+    ok = engine_server.is_static_allowed
+    assert ok("/dev/index.html") and ok("/js/main.js") and ok("/main.js")
+    assert not ok("/dev/engine_server.py") and not ok("/dev/tests/x.js") and not ok("/.git/config")

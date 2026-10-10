@@ -58,7 +58,8 @@ def _report(stage, initial, num_qubits, allow_cx):
             return node_ids[key]
         node_id = f"n{len(node_ids)}"
         node_ids[key] = node_id
-        nodes.append({"id": node_id, "state": key[0], "measured": key[1], "actions": []})
+        nodes.append({"id": node_id, "state": key[0], "measured": key[1],
+                      "validated": key[4], "actions": []})
         record = memo[key]
         for _, _, _, action, child in record[3]:
             edges = []

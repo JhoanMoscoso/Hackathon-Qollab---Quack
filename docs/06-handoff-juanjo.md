@@ -247,11 +247,13 @@ Snapshots v2 separan `initial_circuit` de `history` (acciones únicamente). `amp
 
 ### Pack global vigente (nuevo contrato del equipo)
 
-Diez pares prioritarios: |++⟩, Φ⁺, los cuatro estados computacionales, Ψ⁺, Φ⁻, |+⟩Alice|0⟩Bob y |−⟩Alice|0⟩Bob. Cubren inicios, las ramas de victoria y soluciones canónicas; otros once estados del catálogo quedan con fuente local explícita. En Forte (29 qubits) se usan veinte, debajo del máximo catorce pares. Backend con capacidad menor reduce el pack, no fuerza veinte qubits. `packed_manifest` vincula cada state_key con sus qubits/bits clásicos y el resultado conjunto se marginaliza por par.
+Nueve pares prioritarios: Φ⁺, los cuatro estados computacionales, Ψ⁺, Φ⁻, |+⟩Alice|0⟩Bob y |−⟩Alice|0⟩Bob. Cubren inicios, las ramas de victoria y soluciones canónicas; otros once estados del catálogo quedan con fuente local explícita. En Forte (29 qubits) se usan dieciocho, debajo del máximo catorce pares. Backend con capacidad menor reduce el pack, no fuerza veinte qubits. `packed_manifest` vincula cada state_key con sus qubits/bits clásicos y el resultado conjunto se marginaliza por par.
 
 **Evidencia actual:** pack de diez pares probado localmente y **con el motor completo en Qollab Python**, en built-in y Forte. Ambos devolvieron `states:21,circuits:1,strategy:packed,submitted_states:10,backend_states:10,source:mixed,submission_attempted:true,reason:null`, con 200 shots. Gates/medición de L2/opposites y reset pasaron; ambas medidas usaron fuente backend. Esto sustituye la duda de compatibilidad de veinte qubits, no demuestra aún JS/canvas/1P/2P ni las otras etapas jugadas. Si el envío falla, el motor continúa local sin segundo job. `single` solo se elige antes del primer precompute en un nuevo Run.
 
-El panel de probabilidades de veinte bits es el resultado **conjunto de los diez pares independientes**: el motor extrae cada par mediante `packed_manifest`. No son veinte personajes, un nivel de veinte qubits ni una distribución de dos qubits mal formateada. `mixed` significa diez estados de backend y once locales; no un error. Los tiempos UI incluyen carga/runtime/espera; no sirven para E7. No calcular una tasa de ruido global a partir de esos listados sin separar soporte/marginales por estado.
+(after L1 changed to start at |00⟩ the campaign has 20 states and the pack is 9 pairs, not 21 / 10; Qollab pack run must be repeated). Los números de esta evidencia y de los reportes de §8 (`states:21`, diez pares) son los medidos con el pack anterior.
+
+El panel de probabilidades de dieciocho bits es el resultado **conjunto de los nueve pares independientes**: el motor extrae cada par mediante `packed_manifest`. No son veinte personajes, un nivel de veinte qubits ni una distribución de dos qubits mal formateada. `mixed` significa nueve estados de backend y once locales; no un error. Los tiempos UI incluyen carga/runtime/espera; no sirven para E7. No calcular una tasa de ruido global a partir de esos listados sin separar soporte/marginales por estado.
 
 ### E5/E6 local — resultado reproducible
 
@@ -265,7 +267,7 @@ Entorno probado: Python 3.14.7, Qiskit 2.5.2, numpy 2.3.5. No son necesariamente
 | L2 feed-forward | 6 | 14 | 0.5 | 1 | 1 |
 | L3 core | 20 | 245 | 0 | 1 | 3 |
 
-Unión de campaña: **21 estados físicos**. L3 sin CX alcanza como máximo **0.5**, por tanto no tiene política determinista bajo estas reglas y presupuesto. El verificador incluye la solución canónica CX,Z,H y sus alternativas mínimas; feed-forward requiere una política condicionada, no una lista fija. Todas las recetas del catálogo se comprobaron localmente equivalentes y sin reset. Esto no sustituye test remoto del lote (no soportado) ni walkthrough espacial.
+Unión de campaña: **20 estados físicos**. L3 sin CX alcanza como máximo **0.5**, por tanto no tiene política determinista bajo estas reglas y presupuesto. El verificador incluye la solución canónica CX,Z,H y sus alternativas mínimas; feed-forward requiere una política condicionada, no una lista fija. Todas las recetas del catálogo se comprobaron localmente equivalentes y sin reset. Esto no sustituye test remoto del lote (no soportado) ni walkthrough espacial.
 
 Desde la raíz del repo, después de instalar `requirements-dev.txt` en un virtualenv:
 ```bash
@@ -307,9 +309,9 @@ El bloque siguiente está entregado para edición, no implica que el juego JS es
 >
 > Python and Qiskit are the quantum source of truth. The engine evolves a full-precision Statevector, computes probabilities and reduced-state entanglement, and projects only the qubit explicitly measured. Correlation can make Bob's state definite without marking it measured: Bob can still apply a correction based on Alice's classically communicated result. Once a qubit is explicitly measured, gameplay gates touching it are rejected. Terminal uses and gate budgets are enforced by the same rules used by the solver.
 >
-> Qollab's IonQ integration accepted individual circuits but rejected circuit lists during our experiments. We therefore prepare ten priority two-qubit states as independent pairs in one twenty-qubit circuit and submit it once per execution. A classical-bit manifest extracts each pair's empirical counts from the joint result. Other reachable states use Qiskit sampling, and the engine reports backend, local, or mixed sources. Resets and level changes do not submit additional jobs.
+> Qollab's IonQ integration accepted individual circuits but rejected circuit lists during our experiments. We therefore prepare nine priority two-qubit states as independent pairs in one eighteen-qubit circuit and submit it once per execution. A classical-bit manifest extracts each pair's empirical counts from the joint result. Other reachable states use Qiskit sampling, and the engine reports backend, local, or mixed sources. Resets and level changes do not submit additional jobs.
 >
-> The complete Python probe passed on Qollab's built-in simulator and IonQ Forte 1 simulator. Local verification enumerated twenty-one physical states and confirmed the intended level strategies, including a three-gate deterministic core solution. Without gameplay CNOT, that core's best success probability is one half. The independent opening stage intentionally remains probabilistic.
+> The complete Python probe passed on Qollab's built-in simulator and IonQ Forte 1 simulator. Local verification enumerated twenty physical states and confirmed the intended level strategies, including a three-gate deterministic core solution. Without gameplay CNOT, that core's best success probability is one half. The independent opening stage intentionally remains probabilistic.
 >
 > Backend statistics remain separate from ideal probabilities; incompatible outcomes are filtered or sampled locally with diagnostics. This is not a continuous noisy hardware trajectory. A separate Qollab JavaScript probe measured gate and measurement p95 latency at or below 1.5 milliseconds on both tested backends; the complete gameplay walkthrough remains an integration check.
 
@@ -344,7 +346,7 @@ Ambos reportes: `states:21`, `circuits:1`, `strategy:packed`, `submitted_states:
 - Built-in: `00:102,11:98`, total 200; soporte ideal de Φ⁺.
 - Forte: `00:110,11:87,10:1,01:2`, total 200; tres shots (1.5 %) fuera del soporte ideal.
 - Ese 1.5 % es incompatibilidad observada de **este par** en un simulador remoto, no tasa global de error ni medición de hardware real. Medir en Z no identifica todos los errores de fase. El muestreo posterior sigue las reglas de estado ideal/filtrado documentadas, no una trayectoria física ruidosa.
-- El histograma de veinte bits es el job empaquetado completo, no los dos qubits del nivel; para debugger usar marginal de `sampling.counts` del estado.
+- El histograma de dieciocho bits es el job empaquetado completo, no los dos qubits del nivel; para debugger usar marginal de `sampling.counts` del estado.
 
 ### Qué sigue, sin más experimentos redundantes
 

@@ -7,17 +7,21 @@ import { parseLevel } from './js/grid.js';
 import { stageView } from './js/level_adapter.js';
 import {
   createWorld, resetWorld, stepPlayer, interact, consumeTerminal, syncTerminalUses, stageComplete, objectiveFailed, hazardCheck,
+  sensorsUnderPlayers,
 } from './js/entities.js';
 import { createInput } from './js/input.js';
 import { createRenderer } from './js/render.js';
 import { createDebugger, describeChange, hintFor } from './js/debugger.js';
 import { loadSprites } from './js/sprite_loader.js';
+import { withTimeout } from './js/async_util.js';
 
 /* global backend -- Qollab provides the quantum backend as a global; dev/index.html defines a stub. */
 const DEFAULT_LEVEL = 'level1';
 const DEATH_MS = 1000;
 const RETRY_MS = 1000; // how long a failed retry_stage result stays visible before the stage resets
 const PRECOMPUTE_SHOTS = 200;
+const PRECOMPUTE_TIMEOUT_MS = 45_000; // how long boot waits for the one backend submission before opening the menu
+const SLOW_BACKEND_NOTE = 'Quantum backend is slow — using local sampling until it finishes.';
 const $ = (id) => document.getElementById(id);
 const NOTES = {
   wrong_owner: 'This terminal belongs to the other player.',
@@ -54,7 +58,7 @@ async function call(name, ...args) {
     lastError = null;
     return out;
   } catch (e) {
-    lastError = hintFor(e?.code, String(e?.message ?? e));
+    lastError = hintFor(e?.code, String(e?.message ?? e), snap);
     refresh();
     return null;
   }
@@ -91,6 +95,12 @@ async function precomputeOnce() {
 function buildWorld() {
   grid = parseLevel(stageView(level, snap.stage_index ?? 0));
   world = createWorld(grid);
+}
+
+function showMenuNote(msg) {
+  const el = $('menu-note');
+  el.textContent = msg ?? '';
+  el.hidden = !msg;
 }
 
 function showMenuError(msg) {
@@ -194,10 +204,10 @@ function die() {
 /** retry_stage failure (e.g. L1 results differ): keep the result visible briefly, then reset the stage. */
 async function handleFailure(ep) {
   if (snap.objective?.failure_policy === 'death') return die();
-  refresh('Results differ — hardware noise or wrong circuit. Resetting the stage…');
+  refresh('Results differ. Resetting the stage…');
   await sleep(RETRY_MS);
   if (ep !== epoch || sm.state !== 'level') return;
-  await resetStage('Results differ — hardware noise or wrong circuit. Stage reset.');
+  await resetStage('Results differ. Stage reset.');
 }
 
 /** Both players on their exits with a ready objective: next stage, or the win screen on the last one. */
@@ -220,20 +230,23 @@ async function handleComplete(ep) {
 
 async function runIntent(intent, ep) {
   lastError = null; // a new action clears the previous engine error
+  dbg.newAction();  // ...and lets an identical message be announced again
   if (intent.type === 'switch') return refresh(`Controlling ${input.active === 'alice' ? 'Alice' : 'Bob'}.`);
+  let events;
   if (intent.type === 'run') { // RUN CIRCUIT: the engine validates the prepared state; errors show in the debugger
     const prev = snap;
     const s = await call('run_circuit');
-    if (ep !== epoch) return;
-    if (s) {
-      snap = s;
-      refresh(s.objective?.validated ? `${describeChange(prev, s, { type: 'run' })}. Both measure now.` : null, prev);
-    }
-    return;
+    if (ep !== epoch || !s) return;
+    snap = s;
+    refresh(s.objective?.validated ? `${describeChange(prev, s, { type: 'run' })}. Both measure now.` : null, prev);
+    // Sensors only fire when stepped on, so players already standing on one are measured now.
+    events = s.objective?.validated ? sensorsUnderPlayers(world, snap) : [];
+    if (!events.length) return;
+  } else {
+    events = intent.type === 'move'
+      ? stepPlayer(world, intent.player, intent.dx, intent.dy, snap)
+      : interact(world, intent.player, snap);
   }
-  const events = intent.type === 'move'
-    ? stepPlayer(world, intent.player, intent.dx, intent.dy, snap)
-    : interact(world, intent.player, snap);
   let note = null;
   let before = null; // snapshot before the first state change of this intent (for the bar highlight)
   for (const ev of events) {
@@ -318,6 +331,12 @@ $('click-to-play').addEventListener('click', (e) => {
   // Loading level1 doubles as the engine health check.
   const [first] = await Promise.all([loadLevelCached(DEFAULT_LEVEL), loadSprites()]);
   if (!first) { $('load-status').textContent = `Error: ${lastError}`; return; }
-  await precomputeOnce(); // the only backend submission of the page load
+  // The only backend submission of the page load. It is never cancelled or restarted: after the
+  // timeout the menu opens and the task keeps running; sampling stays local until it finishes.
+  const precompute = precomputeOnce();
+  if ((await withTimeout(precompute, PRECOMPUTE_TIMEOUT_MS)).timedOut) {
+    showMenuNote(SLOW_BACKEND_NOTE);
+    precompute.then(() => showMenuNote(null));
+  }
   sm.setState(STATES.MENU);
 })();

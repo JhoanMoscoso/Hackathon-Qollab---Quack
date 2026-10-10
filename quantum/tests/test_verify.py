@@ -49,3 +49,10 @@ def test_calibration_requires_the_run_step_and_the_run_is_free():
 
 def test_calibration_without_cx_cannot_validate_or_win():
     assert verify_stage(stage("level1", "calibration"), allow_cx=False)["probability"] == 0
+
+
+def test_witness_nodes_expose_validated_flag():
+    nodes = verify_stage(stage("level1", "calibration"))["witness"]["nodes"]
+    assert all(isinstance(node["validated"], bool) for node in nodes)
+    assert nodes[0]["validated"] is False
+    assert any(node["validated"] for node in nodes)  # post-run nodes are distinguishable

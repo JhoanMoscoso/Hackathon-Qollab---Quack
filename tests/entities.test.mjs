@@ -5,7 +5,7 @@ import { parseLevel } from '../js/grid.js';
 import {
   Player, Door, Sensor, GateTerminal, CnotTerminal, Exit,
   createWorld, resetWorld, stepPlayer, interact, consumeTerminal, syncTerminalUses,
-  stageComplete, objectiveFailed, hazardCheck,
+  stageComplete, objectiveFailed, hazardCheck, sensorsUnderPlayers,
 } from '../js/entities.js';
 import * as entities from '../js/entities.js';
 import { view, worldOf, place, pos, l1snap, objSnap } from './helpers.mjs';
@@ -321,4 +321,23 @@ test('hazardCheck: non-lethal door never kills', () => {
   const w = w1();
   place(w, 'alice', 4, 6);
   assert.deepEqual(hazardCheck(w, l1snap({ doors: '1' })), []);
+});
+
+test('sensorsUnderPlayers: players already on an unmeasured sensor produce measure events (post-Run re-fire)', () => {
+  const w = w1();
+  place(w, 'alice', 2, 3); // sensor_q0
+  assert.deepEqual(sensorsUnderPlayers(w, l1snap({ validated: true })), [{ type: 'measure', qubit: 0 }]);
+  place(w, 'bob', 17, 3); // sensor_q1
+  assert.deepEqual(sensorsUnderPlayers(w, l1snap({ validated: true })), [
+    { type: 'measure', qubit: 0 }, { type: 'measure', qubit: 1 },
+  ]);
+});
+
+test('sensorsUnderPlayers: nothing for measured qubits or players off their sensors', () => {
+  const w = w1();
+  assert.deepEqual(sensorsUnderPlayers(w, l1snap({ validated: true })), []);
+  place(w, 'alice', 2, 3);
+  assert.deepEqual(sensorsUnderPlayers(w, l1snap({ validated: true, measured: [1, null] })), []);
+  place(w, 'alice', 1, 3);
+  assert.deepEqual(sensorsUnderPlayers(w, l1snap({ validated: true })), []);
 });

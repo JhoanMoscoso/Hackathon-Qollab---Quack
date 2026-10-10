@@ -116,8 +116,31 @@ const HINTS = {
   GATE_NOT_ALLOWED: "That terminal isn't yours.",
 };
 
-/** Short player-facing hint for an engine error code; unknown codes keep the engine message. */
-export const hintFor = (code, message) => HINTS[code] ?? message;
+/**
+ * Short player-facing hint for an engine error code; unknown codes keep the engine message.
+ * `snap` (optional) refines STAGE_FINISHED: a failed stage must be retried, not exited.
+ */
+export function hintFor(code, message, snap = null) {
+  if (code === 'STAGE_FINISHED' && snap?.objective?.status === 'failed') return 'Stage failed — press R to retry.';
+  return HINTS[code] ?? message;
+}
+
+/**
+ * Decides when the aria-live region should be (re)written. Identical text is announced once per user
+ * action (the same action refreshes several times); `newAction()` forgets it so a repeated error
+ * triggered by a new action is announced again.
+ */
+export function createLiveAnnouncer() {
+  let last = null;
+  return {
+    next(text) {
+      if (text === last) return null;
+      last = text;
+      return text;
+    },
+    newAction() { last = null; },
+  };
+}
 
 /** Concise screen-reader sentence for the aria-live region. */
 export function liveText(snap, lastMeasure) {
@@ -237,10 +260,21 @@ export function createDebugger(rootEl, liveEl) {
   rootEl.replaceChildren(title, ket, bars, circuitTitle, circuitWrap, stats, msg);
   drawCircuit(svg, []);
 
-  let lastLive = null;
+  const announcer = createLiveAnnouncer();
   let highlightTimer = null;
+  let liveTimer = null;
+
+  function announce(text) {
+    clearTimeout(liveTimer);
+    if (liveEl.textContent === text) { // same text again: clear first so screen readers re-read it
+      liveEl.textContent = '';
+      liveTimer = setTimeout(() => { liveEl.textContent = text; }, 50);
+    } else liveEl.textContent = text;
+  }
 
   return {
+    /** Call at the start of every user action so a repeated identical message is announced again. */
+    newAction() { announcer.newAction(); },
     update(snap, { lastMeasure = null, error = null, note = null, prev = null, sampling = null } = {}) {
       if (snap) {
         ket.textContent = snap.ket;
@@ -269,10 +303,8 @@ export function createDebugger(rootEl, liveEl) {
       msg.textContent = error ? `Error: ${error}` : (note ?? '');
       msg.classList.toggle('is-error', !!error);
       const text = [liveText(snap, lastMeasure), note, error ? `Error: ${error}` : null].filter(Boolean).join(' ');
-      if (text !== lastLive) {
-        lastLive = text;
-        liveEl.textContent = text;
-      }
+      const toAnnounce = announcer.next(text);
+      if (toAnnounce !== null) announce(toAnnounce);
     },
   };
 }

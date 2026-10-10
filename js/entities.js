@@ -170,6 +170,22 @@ export function stageComplete(world, snap) {
   return world.exits.every((e) => same(world.players[e.player], [e.x, e.y]));
 }
 
+/**
+ * Measure events for players already standing on an unmeasured sensor. A sensor only fires when stepped
+ * on, so after a successful RUN (which unlocks measurement) a player who waited on it would never be
+ * measured; main.js feeds these events through the same path as stepping onto the sensor.
+ */
+export function sensorsUnderPlayers(world, snap) {
+  const events = [];
+  for (const player of Object.values(world.players)) {
+    const sensor = at(world.sensors, player.x, player.y);
+    if (sensor && snap.measured[sensor.qubit] == null && !events.some((e) => e.qubit === sensor.qubit)) {
+      events.push({ type: 'measure', qubit: sensor.qubit });
+    }
+  }
+  return events;
+}
+
 /** True when the engine reports the objective as failed (e.g. measurement outcomes differ). */
 export const objectiveFailed = (snap) => snap?.objective?.status === 'failed';
 

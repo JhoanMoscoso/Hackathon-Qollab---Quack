@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  PROB_ORDER, barData, circuitColumns, liveText, statusRows, samplingLabel, describeChange, changedBars, hintFor,
+  PROB_ORDER, barData, circuitColumns, liveText, statusRows, samplingLabel, describeChange, changedBars, hintFor, createLiveAnnouncer,
 } from '../js/debugger.js';
 
 test('PROB_ORDER is the fixed game order', () => {
@@ -199,4 +199,24 @@ test('hintFor: known engine codes map to short hints, unknown ones keep the engi
   assert.equal(hintFor('GATE_NOT_ALLOWED', 'x'), "That terminal isn't yours.");
   assert.equal(hintFor('SOMETHING_ELSE', 'engine says no'), 'engine says no');
   assert.equal(hintFor(undefined, 'plain'), 'plain');
+});
+
+test('hintFor: STAGE_FINISHED on a failed objective tells the player to retry', () => {
+  const failed = { objective: { status: 'failed' } };
+  assert.equal(hintFor('STAGE_FINISHED', 'x', failed), 'Stage failed — press R to retry.');
+  assert.equal(hintFor('STAGE_FINISHED', 'x', { objective: { status: 'ready' } }), 'Stage finished — head to the exits.');
+  assert.equal(hintFor('STAGE_FINISHED', 'x', null), 'Stage finished — head to the exits.');
+  assert.equal(hintFor('NOT_VALIDATED', 'x', failed), 'Build the circuit, then press Space to run it.');
+});
+
+test('createLiveAnnouncer: identical text is announced once per action, again after a new action', () => {
+  const live = createLiveAnnouncer();
+  assert.equal(live.next('Error: blocked'), 'Error: blocked');
+  assert.equal(live.next('Error: blocked'), null); // refresh() twice in the same action
+  assert.equal(live.next('Other'), 'Other');
+  assert.equal(live.next('Other'), null);
+  live.newAction();
+  assert.equal(live.next('Other'), 'Other'); // same error triggered again by a new action
+  assert.equal(live.next('Other'), null);
+  assert.equal(live.next(''), '');
 });

@@ -14,9 +14,11 @@ import asyncio
 import inspect
 import json
 import os
+import posixpath
 import sys
 import traceback
 from http.server import HTTPServer, SimpleHTTPRequestHandler
+from urllib.parse import unquote
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -31,12 +33,32 @@ ALLOWED = (
     "reset_level", "reset_stage", "advance_stage", "snapshot", "load_audio", "run_circuit",
 )
 
+MAX_BODY = 64 * 1024
+# Static files the game needs; anything else (.git, quantum/, docs/, tests, this file) is a 404.
+STATIC_DIRS = ("dev/", "js/", "levels/", "audio/", "assets/")
+STATIC_FILES = ("index.html", "main.js", "main.css", "favicon.ico")
+
 ServerClass = HTTPServer
 _loop = asyncio.new_event_loop()
 
 
 def _json(payload):
     return json.dumps(payload, ensure_ascii=False)
+
+
+def is_static_allowed(url_path):
+    """True when a GET path may be served. Decodes and normalises first, so `..` and %2e%2e never escape."""
+    decoded = unquote(url_path.split("?", 1)[0].split("#", 1)[0])
+    if "\\" in decoded or "\0" in decoded or ".." in decoded.split("/"):
+        return False
+    rel = posixpath.normpath(decoded).lstrip("/")
+    if rel in STATIC_FILES or rel == "dev":
+        return True
+    if not rel.startswith(STATIC_DIRS):
+        return False
+    if rel.startswith("dev/"):
+        return not rel.startswith("dev/tests/") and not rel.endswith(".py") and "__pycache__" not in rel.split("/")
+    return True
 
 
 def dispatch(fn_name, args):
@@ -70,6 +92,8 @@ class Handler(SimpleHTTPRequestHandler):
         ".ogg": "audio/ogg",
     }
 
+    timeout = 5  # an idle or half-open connection must not wedge the single-threaded server
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=ROOT, **kwargs)
 
@@ -85,13 +109,54 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _host_allowed(self):
+        """Only localhost:<port> / 127.0.0.1:<port> (blocks DNS rebinding); a missing Host (HTTP/1.0 curl) is fine."""
+        host = self.headers.get("Host")
+        if host is None:
+            return True
+        port = self.server.server_address[1]
+        return host.strip().lower() in (f"localhost:{port}", f"127.0.0.1:{port}")
+
+    def _guard(self):
+        """Reply and return False when the request must not be handled."""
+        if self._host_allowed():
+            return True
+        self._reply(403, _json({"error": "Forbidden host", "code": "FORBIDDEN_HOST"}))
+        return False
+
+    def send_head(self):
+        if not self._guard():
+            return None
+        path = self.path.split("?", 1)[0]
+        if path == "/":
+            self.send_response(302)
+            self.send_header("Location", "/dev/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return None
+        if not is_static_allowed(path):
+            self.send_error(404, "Not found")
+            return None
+        return super().send_head()
+
+    def list_directory(self, path):
+        self.send_error(404, "Not found")
+        return None
+
     def do_POST(self):  # noqa: N802 - http.server naming
+        if not self._guard():
+            return None
         prefix = "/engine/"
         path = self.path.split("?", 1)[0]
         if not path.startswith(prefix):
             return self._reply(404, _json({"error": "Not found", "code": "NOT_FOUND"}))
+        media_type = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+        if media_type != "application/json":
+            return self._reply(415, _json({"error": "Content-Type must be application/json", "code": "UNSUPPORTED_MEDIA_TYPE"}))
         try:
             length = int(self.headers.get("Content-Length") or 0)
+            if not 0 <= length <= MAX_BODY:
+                raise ValueError(f"Content-Length must be between 0 and {MAX_BODY}")
             payload = json.loads(self.rfile.read(length) or b"{}")
             args = payload.get("args", [])
             if not isinstance(args, list):
