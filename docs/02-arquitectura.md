@@ -86,17 +86,17 @@ Todo lo que cruza el puente JS↔Python viaja como **string JSON** (`json.dumps`
 
 1. Antes de enviar, `enumerate.py` hace BFS de **todas las etapas de la campaña** con budgets/usos/mediciones explícitas y dedupe físico para la tabla. Cache y guard de envío viven durante el Run entero, no por nivel. La entrega local actual reúne 21 estados físicos; schema/contrato vigente en 03 y 06 §7.
 2. Para 2 qubits con compuertas Clifford el conjunto cabe en ≤ 60 estados (estados estabilizadores); con presupuesto 6 suele ser 15–40. Para 3 qubits se limita por presupuesto.
-3. `StatePreparation` sin reset + medida y transpilación. **Modo por defecto packed**, alineado con `07-level-design-constraints.md`: diez estados prioritarios en pares independientes de un único circuito de veinte qubits; se decodifican counts por par mediante un manifest explícito de bits clásicos. Si el backend declara menos capacidad se reduce el pack. Otros estados usan Qiskit local; falla de envío/resultado → fallback sin reenviar. `single` queda como modo de un Bell y `batch` como opt-in solo para compatibles. **Motor completo y pack de veinte qubits probados en Qollab Python por Juanjo en built-in y Forte**; el puente JS/juego sigue pendiente.
+3. `StatePreparation` sin reset + medida y transpilación. **Modo por defecto packed**, alineado con `07-level-design-constraints.md`: diez estados prioritarios en pares independientes de un único circuito de veinte qubits; se decodifican counts por par mediante un manifest explícito de bits clásicos. Si el backend declara menos capacidad se reduce el pack. Otros estados usan Qiskit local; falla de envío/resultado → fallback sin reenviar. `single` queda como modo de un Bell y `batch` como opt-in solo para compatibles. **Motor, pack y puente JS de diagnóstico probados en Qollab built-in y Forte**; el recorrido/adaptación del juego sigue pendiente.
 4. Resultado: `counts[state_key]`. En juego, medir el qubit k en el estado S = sacar un shot de `counts[S]` y leer el bit k. El estado post-medición se calcula con `Statevector` y se busca su key para la siguiente medición.
 5. Si `backend.run` falla (IonQ caído, lista no soportada), fallback: `Statevector(S).sample_counts(shots)` por estado. Se informa en el debugger ("sampled locally").
 
-El estado/probabilidades son ideales y los counts backend son estadísticas separadas. Outcomes imposibles se filtran y se informa fuente efectiva/descarte; esto condiciona el ruido y no reproduce una trayectoria física continua. No etiquetar un porcentaje de incompatibilidad como tasa total de error de hardware. Integración del motor entregado en Qollab/JS e IBM noise model todavía pendiente; ver resultados concretos en 06.
+El estado/probabilidades son ideales y los counts backend son estadísticas separadas. Outcomes imposibles se filtran y se informa fuente efectiva/descarte; esto condiciona el ruido y no reproduce una trayectoria física continua. No etiquetar un porcentaje de incompatibilidad como tasa total de error de hardware. Diagnóstico JS validado; integración del juego e IBM noise model pendientes; ver evidencia en 06 §8.
 
 ## Rendimiento
 
 - Pyodide + import de Qiskit: 10–30 s la primera vez por sesión. Pantalla de carga obligatoria con texto.
-- Llamada JS→Python: solo en eventos, nunca por frame; E7 pendiente de medir, objetivo <20 ms.
-- `precompute` en local: < 1 s. En IonQ remote: segundos a decenas de segundos (shot-aware). Usar `shots=200`.
+- Llamada JS→Python: solo en eventos, nunca por frame. E7 con tres warm-ups y veinte muestras: p95 gates 1.20 ms en ambos; medir 1.50 ms built-in / 1.40 ms Forte. Incluye JSON, excluye render/precompute. Cumplió <20 ms en el caso medido, no garantía de toda operación/dispositivo.
+- `precompute` desde JS medido: 1548.4 ms built-in / 16003.4 ms Forte a 200 shots; UI total 12.5 s / 22.7 s. Separar carga/espera de eventos; no asumir <1 s local ni confundir los 1000 ms de circuito reportados por Forte con tiempo end-to-end.
 - Canvas: mapa ≤20×12, sin partículas pesadas; rendimiento y cantidad de entidades deben medirse en integración, sin garantía 60 fps todavía.
 - No usar `circuit.draw('mpl')` (matplotlib en Pyodide es lento). El circuito se dibuja en JS.
 
