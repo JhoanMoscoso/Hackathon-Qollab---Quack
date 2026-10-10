@@ -4,7 +4,7 @@ For: Fernanda (level design). Verified by: Juanjo (E6). Status: Phase 0 tests pa
 
 Revision requested by Juanjo (Oct 10, merged PR #5): Calibration Chamber builds a Bell pair from zero and validates it before measurement/unlocking. The independent/entangled opening is historical; contract/evidence in handoff06 §9 and `levels/level1.json`. The revised Python protocol passed in Qollab built-in/Forte: outcome11 unlocked both doors and reset relocked them. JS diagnostic movement/focus is confirmed; the actual game UI/walkthrough still needs integration.
 
-L2 revision (Oct10): fresh Phi+, Bob X/measure, explicit SEND/RECEIVE, Alice X if0 or KEEP(I) if1, then Alice measures0. Final00/01 both unlock; never require Bob0. Protocol in handoff06§10. Ten map entities; classical controls in HUD. Local success1/blind0, worstcase2gates; runtime/gameplay of this revision pending.
+L2 revision (Oct10): fresh Phi+, Bob X/measure, explicit SEND/RECEIVE, Alice X if0 or KEEP(I) if1, then Alice measures0. Final00/01 both unlock; never require Bob0. Ten map entities, HUD controls. Python protocol passed in Qollab built-in/Forte on branch1→KEEP→Alice0/final01; branch0 covered locally. Local success1/blind0, worstcase2gates. Actual HUD/gameplay/audio walkthrough pending; evidence handoff06§10.
 
 ## 1. Where the game runs
 

@@ -6,7 +6,7 @@ Dueño: Juanjo. Consumidor: Jhoan (`main.js`). Todo lo que se devuelve a JS es *
 
 **Revisión de L1 integrada y validada (2026-10-10):** `Calibration Chamber` parte de |00⟩ y exige H de Alice, CX de Bob y `run_circuit()` antes de medir. PR #5 fusionado; protocolo completo pasó en Qollab built-in/Forte, incluida apertura para 11 y reset. Snapshot inicial en `docs/snapshot-level1-example.json`; evidencia en handoff06 §9. Falta conectar UI/colisiones y realizar el walkthrough antes de declararse jugable.
 
-**L2 Bell Block (revisión 2026-10-10):** una etapa que re-prepara Φ⁺; Bob X(q1)→medir q1→SEND→Alice RECEIVE→X(q0) si m=0 / KEEP(I) explícito si m=1→medir q0=0. `docs/snapshot-example.json` refleja ese contrato actual, no el antiguo L2/opposites. Los controles se conectaron al frontend existente; falta validación Qollab/gameplay de la revisión.
+**L2 Bell Block (revisión 2026-10-10):** una etapa que re-prepara Φ⁺; Bob X(q1)→medir q1→SEND→Alice RECEIVE→X(q0) si m=0 / KEEP(I) explícito si m=1→medir q0=0. Snapshot actual en `docs/snapshot-example.json`. Protocolo Python validado en Qollab built-in/Forte (Bob1→KEEP→Alice0/01 y ambas puertas); los controles están conectados al frontend pero su recorrido visual/audio sigue pendiente. Evidencia en handoff06 §10.
 
 ## Conceptos que el equipo debe entender (en orden)
 

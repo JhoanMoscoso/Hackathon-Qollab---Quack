@@ -438,12 +438,33 @@ HUD: Bob SEND BIT, Alice RECEIVE BIT, Alice KEEP(I); atajos B/V/I. Misma cola y 
 
 Verificador: éxito1, ciego0 (orden bloqueado), cinco estados/doce nodos, máximo dos gates y dos medidas. Catálogo global20 y mismo pack de diez familias; ningún modelo remoto nuevo. F2 del MD01 requiere recorrido desde menú con audio en Qollab, ambos backends; no aprobarlo por tests puros.
 
-Por preferencia del usuario: **solo tres casos nuevos de backend** (dos ramas/atajos) y **dos comprobaciones pequeñas de UI**; otras pruebas de etapas se adaptaron. No nuevos ensayos estadísticos. Validación final local se registra antes del PR; navegador/Qollab de la revisión sigue pendiente.
+Por preferencia del usuario: **solo tres casos nuevos de backend** (dos ramas/atajos) y **dos comprobaciones pequeñas de UI**; otras pruebas de etapas se adaptaron. No nuevos ensayos estadísticos. El protocolo Python de L2 ya pasó en Qollab en ambos backends; navegador/HUD y recorrido del juego aún pendientes.
 
-Regresión local: **224 tests Python y 202 tests JS pasaron**, CLI verificador exit0. La mayoría son pruebas heredadas de main, no tests nuevos de esta entrega. Probe real con BasicSimulator pasó una rama m=1→KEEP→Alice0/estado01/puertasabiertas, con fuentesbackend y reset correcto. Las dos ramas están cubiertas por los pocos casos forzados locales; no afirmar ejecución remota de L2 todavía.
+Regresión local de entrega: **224 tests Python y 202 tests JS pasaron**, CLI exit0; la mayoría son heredadas de main. Las dos ramas están cubiertas por los casos forzados locales. El probe BasicSimulator y ahora Qollab observaron m=1→KEEP→Alice0/estado01/puertasabiertas, con fuentesbackend y reset correcto. Evidencia remota abajo; no equivale a probar el HUD o escape visual.
 
 Revisión breve corrigió acceso a sensor inexistente (jugadores en spawn/terminal), re-habilitación HUD al finalizar busy y teclado nativo de botones. No se amplió cobertura masiva; se extendió la comprobación pequeña ya existente. `requirements.txt` en raíz declara solo Qiskit/numpy para Qollab; pytest queda en dependencias de desarrollo.
 
 Probe: `dev/qollab-l2/main.py`/`requirements.txt` en raíz de proyecto Python aparte, con quantum/levels/audio. Un precompute; usa el bit recibido para elegir X/I; exige Alice0 y ambas puertas abiertas para00/01, después revisa reset. Esperar `L2 BELL BLOCK: OK (quantum protocol, not a spatial gameplay test)`. Sin llamadas backend después de precompute.
 
 El arnés `dev/qollab-bridge/probe.js` ahora mide BobX/Bobmedida y recorre el canal completo; `benchmark_case` lo identifica. E7 histórico de §8 era Alice medida del caso anterior: no atribuir esos tiempos a este escenario nuevo.
+
+### L2 en Qollab — protocolo Python validado
+
+Fuente: salidas de **Q-Quack L2 protocol** compartidas por Juanjo el 2026-10-10. En ambos backends terminaron sin traceback y con `L2 BELL BLOCK: OK (quantum protocol, not a spatial gameplay test)`.
+
+| Backend | Tiempo UI | Resumen de precompute | Rama observada | Fuentes | Reset |
+|---|---|---|---|---|---|
+| Built-in simulator (24q) | 14.4 s | 20 estados, un circuito packed, diez estados backend, mixed, reason null | Bob1→SEND/RECEIVE1→KEEP/I→Alice0, final01, ambas puertas abiertas | backend/backend | Canal borrado, fase inicial restaurada |
+| IonQ Forte 1 simulator (29q) | 21.9 s | Mismo resumen | Misma rama y resultado01 | backend/backend | Correcto |
+
+El probe confirmó además Φ⁺ fresco, medición prematura bloqueada, BobX→Ψ⁺ y envío/recepción del bit realmente medido. KEEP/I no aplica gate adicional. Que Bob termine1 **no bloquea su puerta**: el objetivo es Alice0 después del protocolo, no la antigua condición Bob0 ni paridad diferente.
+
+La rama Bob0→AliceX→00 tiene prueba local forzada, no se observó en estos dos Runs. Dos resultados1 no prueban un RNG fijo ni distribución sesgada; no repetir ejecuciones solo para perseguir0. Forte reportó `Circuit execution time: 1000ms`, separado del tiempo total UI; esta prueba no mide E7 ni precompute aislado. Histograma20bits = resultado conjunto del pack; no inferir tasa global de ruido sin marginales por par.
+
+**Siguiente validación:** juego visual desde menú, SEND/RECEIVE/KEEP mediante HUD/teclado, ambas puertas/colisiones, ambos jugadores a salidas, audio y 1P/2P. Ese recorrido en built-in y Forte es el exit gate F2 del MD01. PR8 contiene la implementación; el protocolo de consola ya no bloquea el trabajo de L3, pero F2 no se declara completo solo por estas salidas.
+
+### Preparación de L3: información suficiente, diseño espacial pendiente
+
+El MD06 define The Core y `levels/level3.json` ya tiene una base: re-preparar Φ⁺, AliceH/Z, BobX, CX compartida0→1, presupuesto5, victoria10 tras ambas medidas y salidas. Solución canónica CX→Z(0)→H(0): Φ⁺→+0→−0→10. BridgeAlice abre1; laserBob abre0; bits incorrectos son letales. El solver local confirma solución determinista de tres gates; sin CX la mejor probabilidad es0.5, no victoria imposible en todo intento.
+
+No hace falta otra especificación de física para refinar L3. Su mapa actual estima13 entidades frente al límite10: reorganizar interacciones y coordinar arte/activación con Jhoan, manteniendo gates/operandos y acceso antes de sensores/peligros. Después revisar resolución y presupuesto del pack existente y recorrerlo en Qollab. GHZ/tres qubits continúa fuera hasta que L1–L3 sean jugables. Esta actualización solo documenta resultados/alcance; no modifica el JSON de L3 ni inventa un protocolo RUN/SEND para ese nivel.
