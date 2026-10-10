@@ -8,7 +8,7 @@ L2 revision (Oct10): fresh Phi+, Bob X/measure, explicit SEND/RECEIVE, Alice X i
 
 ## 1. Where the game runs
 
-L3 delivery (Oct10): same AliceH/Z/BobX/sharedCX resources, budget5/goal10. Local gates are finite-use HUD controls (`placement:"hud"`), keeping ten physical entities without removing gates. CX stays on two plates requiring both players; sensor/hazard lanes dominate exits. Solver confirms3gate deterministic solution; revised map/HUD runtime/visual acceptance pending. Handoff06§11.
+L3 delivery (Oct10): same AliceH/Z/BobX/sharedCX, budget5/goal10. Finite-use HUD local gates keep ten physical entities; CX still requires both players on plates. The revised Python probe passed in Qollab built-in/Forte: CXZH→10,backend measurements1/0,safe hazards,reset. Actual plates/HUD/collisions/exits/audio/1P2P still need visual acceptance. Evidence handoff06§11.
 
 Whoever presses **Run** picks the backend, judges included. The game must work the same on all of them; only noise differs.
 

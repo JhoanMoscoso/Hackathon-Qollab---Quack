@@ -219,7 +219,7 @@ En la segunda ejecución individual de Forte, 3/200 shots (1.5 %) quedaron fuera
 
 ## 7. Entrega implementada para Jhoan
 
-Entrega inicial en `feat/juanjo-quantum-engine`, revisiones L1/L2/L3 sobre UI real de Jhoan y assets del equipo. Los tres mapas actuales tienen diez entidades; gates/canal HUD no suman celdas. Walkthrough/Qollab de nuevoL3 pendiente. Protocolos §9–11; no usar antiguos JSON de dos etapas L2.
+Entrega inicial en `feat/juanjo-quantum-engine`, revisiones L1/L2/L3 sobre UI real de Jhoan y assets del equipo. Los tres mapas tienen diez entidades. Protocolos Python de los tres niveles ya pasaron en Qollab built-in/Forte; recorridos visuales/audio/1P2P pendientes. Protocolos §9–11; no usar antiguos JSON de dos etapas L2.
 
 ### Archivos y API
 
@@ -487,15 +487,30 @@ Implementación autorizada por Juanjo, rama `feat/juanjo-l3-core`. Se basa en L2
 
 CX produce+0/entropía0; Z produce−0 sin cambiar probabilidadesZ; H produce10. E6: p óptima1/ciega0, mínimo3gates, sinCXmáximo0.5,20vectores/245nodos enL3. Catálogo global20/diez prioridades existentes; ningún nuevo backend.run por nivel/gate/medida/reset.
 
-`dev/qollab-l3/main.py` hace un precompute y comprueba pasos/bits1/0/objetosseguros/reset. Pasó con BasicSimulator local y medidas de tablasbackend. No prueba placas simultáneas/escape visual; esta revisión aún no tiene evidencia Qollab propia.
+`dev/qollab-l3/main.py` hace un precompute y comprueba pasos/bits1/0/objetosseguros/reset. Pasó localmente y en Qollab built-in/Forte según evidencia siguiente. No prueba placas simultáneas ni HUD/escape visual.
 
 Validación reutilizada: **101 tests Python existentes y 202 tests JS existentes pasaron**, sin agregar casos/funciones de test. Solo se adaptaron coordenadas/fixtures/HUD. Verificador confirmó métricas anteriores y probe BasicSimulator terminó `L3 THE CORE: OK`. No ensayos estadísticos nuevos ni GHZ.
 
 ### Próxima acción
 
-1. Proyecto Python Q-Quack L3 protocol: subir ZIP entregado con main/requirements en raíz, quantum/levels/audio; Run built-in y Forte separados. Esperar `L3 THE CORE: OK`,20estados/1circuito/10backendstates/reasonnull.
+1. **Probe Python completado en ambos.** Conservar Q-Quack L3 protocol/ZIP/salidas; no repetir sin regresión. Próximo trabajo es el juego JS con los PR8/10 integrados en orden.
 2. Juego real, elegirL3. Ambos a placasCX, activar una vez; AliceZ y AliceH; medir ambos entrando a carriles; cruzar peligros seguros a ambas salidas. HUD/1P/2P se comprueban visualmente, no por consola.
 3. MD01F3 exige tres niveles completos, accesibilidad y consola sin errores. Audio/walkthrough/Qollab completo siguen pendientes, no se aprueban por E6.
 4. `audio/fondo_3.ogg` heredado de main mide2,452,385bytes (>2MB): comprimir antes de subirlo a Qollab. El probe usa solo `soundtrack.ogg` válido; no se alteraron assets ajenos ni se agregó ese archivo grande al ZIP.
 
-ZIP listo para el protocolo Python: `/home/juanm/singularity-tmp/opencode/qollab-juanjo-l3-core.zip`, catorce archivos con main.py/requirements.txt en raíz, quantum8/levels3/audio1. Conserva proyectos anteriores. Cargar por Browse en un proyecto Python aparte y enviar ambas salidas; Run del ZIP no prueba el HUD ni la coordinación espacial de CX.
+ZIP conservado para reproducibilidad: `/home/juanm/singularity-tmp/opencode/qollab-juanjo-l3-core.zip`, catorce archivos, main/requirements en raíz. Ya ejecutado en ambos. No reutilizar ese proyecto Python como si fuera el juego JS; conserva los proyectos diagnósticos.
+
+### L3 en Qollab — protocolo completo validado
+
+Fuente: reportes de **Q-Quack L3 protocol** enviados por Juanjo, 2026-10-10. Ambos finalizaron sin traceback y con `L3 THE CORE: OK (quantum protocol, not a shared-plate/spatial gameplay test)`.
+
+| Backend | Tiempo UI | Resumen precompute | Secuencia/medidas | Fuentes | Reset |
+|---|---|---|---|---|---|
+| Built-in simulator (24q) | 13.7 s | 20 estados,1 circuito packed,10backend,mixed,reason null | CX→+0,Z→−0,H→10;Alice1/Bob0,objetivo listo/peligros seguros | backend/backend | Bell y recursos restaurados |
+| Forte 1 simulator (29q) | 20.0 s | Mismo resumen | Misma secuencia/resultado | backend/backend | Correcto |
+
+El probe comprobó Φ⁺ fresco, ausencia de entrelazamiento tras CX, Z sin modificar probabilidades en base Z, H preparando10, ambas observaciones y valores bridge1/laser0 seguros. Los kets/evolución son cálculo ideal del motor; fuente backend significa muestreo desde counts precomputados y proyección ideal, no puertas remotas ejecutadas en tiempo real ni tomografía de fase en hardware. Histogramas20bits = distribución conjunta del pack; no inferir tasa global de ruido de sus listados.
+
+Forte imprimió `Circuit execution time: 1000ms`, separado del total20s. Ninguna de estas salidas mide E7/precompute aislado ni demuestra render60fps. No comparar13.7/20.0 con Runs anteriores como mejora garantizada; carga/colas/runtime varían.
+
+**Balance del handoff06:** motor, JSONL1–L3, snapshots, catálogo/verificador, probes y evidencia Python de los tres niveles entregados. E7/diagnóstico JS previo también validado en su escenario. Falta jugar el frontend completo: CX física simultánea, controles H/Z/X, sensores, muerte/reset, salidas, audio y 1P/2P. Esos son gates de F2/F3 del MD01, no se aprueban automáticamente por la consola. No se agregó código/tests nuevos para registrar estos resultados.
