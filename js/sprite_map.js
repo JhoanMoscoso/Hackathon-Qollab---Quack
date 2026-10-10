@@ -58,3 +58,25 @@ export function walkFrameIndex(t, walking, reduceMotion) {
   if (!walking || reduceMotion) return 0;
   return Math.floor((t * WALK_FPS) / 1000) % 2;
 }
+
+// ---- lab decorations (Fernanda's V2 atlas embedded whole, rects hand-mapped in assets/lab_decorations.json) ----
+// Frames come from sprites.js (DECOR_FRAMES): name -> { x, y, w, h, footprint } in V2 SOURCE pixels, drawn at 2x.
+
+/** Decoration sprites are drawn at this integer scale (nearest neighbour): 16 px art -> 32 px tile. */
+export const DECOR_SCALE = 2;
+
+const FLOOR_DETAILS = new Set(['grate', 'mat']);
+
+/** Floor details (floor_* names, mats, grates) are drawn before the other decorations. */
+export const isFloorDetail = (name) => FLOOR_DETAILS.has(name) || String(name).startsWith('floor_');
+
+/**
+ * Screen [x, y] (integers) of a decoration sprite: bottom-centre aligned inside its footprint.
+ * @param {[number, number]} cell top-left tile [x, y]
+ * @param {[number, number]} footprint [w, h] in tiles
+ * @param {{ w: number, h: number }} frame sprite size in SOURCE px (scaled by DECOR_SCALE on screen)
+ */
+export function decorSpritePos([cx, cy], [fw, fh], { w, h }) {
+  const px = TILE * 2; // 32 screen px per tile
+  return [cx * px + Math.floor((fw * px - w * DECOR_SCALE) / 2), cy * px + fh * px - h * DECOR_SCALE];
+}

@@ -152,7 +152,7 @@ from quantum.enumerate import canonical_key, enumerate_stage, campaign_catalog, 
 # incluye proyección y devuelve dict key -> circuito de preparación.
 ```
 
-Circuito de medición = circuito **nuevo** de `StatePreparation(vector)` + `measure_all()`, transpilado al backend. `initialize` fue rechazado en Forte por `reset`, incluso transpilado; no usarlo en esta estrategia. Se verifica equivalencia de la receta antes de enviarla. Muestreo con reemplazo, counts en orden Qiskit interno y conversión al devolver JSON. Resultados imposibles para la medición solicitada se filtran con diagnóstico; si no queda masa, fallback Qiskit. Las probabilidades/estado siguen siendo ideales, no reconstrucción física de ruido.
+Circuito de medición = circuito **nuevo** de `StatePreparation(vector)` + `measure_all()`, transpilado al backend. `initialize` fue rechazado en Forte por `reset`, incluso transpilado; no usarlo en esta estrategia. Se verifica equivalencia de la receta antes de enviarla. Muestreo con reemplazo, counts en orden Qiskit interno y conversión al devolver JSON. Solo los counts de **backend** se reutilizan como fuente de cada medición; un registro local (`statevector_fallback`) es una única muestra finita de 200 shots y no se re-muestrea (congelaría su error de cuantización, p. ej. 116/84 en vez de 50/50): cada medición local es un sorteo nuevo del vector ideal. Resultados imposibles para la medición solicitada se filtran con diagnóstico; si no queda masa, fallback Qiskit. Las probabilidades/estado siguen siendo ideales, no reconstrucción física de ruido.
 
 ## Pruebas mínimas (pytest local, fuera de Qollab)
 

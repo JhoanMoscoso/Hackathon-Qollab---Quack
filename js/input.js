@@ -23,12 +23,14 @@ export function keyToIntent(code, mode, active) {
     if (code === 'KeyE') return { player: 'alice', type: 'interact' };
     if (code in ARROWS) return move('bob', ARROWS[code]);
     if (code === 'Enter') return { player: 'bob', type: 'interact' };
+    if (code === 'Space') return { type: 'run' };
     return null;
   }
   if (code in WASD) return move(active, WASD[code]);
   if (code in ARROWS) return move(active, ARROWS[code]); // convenience in 1P
   if (code === 'KeyE' || code === 'Enter') return { player: active, type: 'interact' };
   if (code === 'Tab') return { type: 'switch' };
+  if (code === 'Space') return { type: 'run' }; // RUN CIRCUIT: shared, not tied to a player
   return null;
 }
 

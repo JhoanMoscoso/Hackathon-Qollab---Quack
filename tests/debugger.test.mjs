@@ -1,7 +1,10 @@
 // Tests for the pure helpers of js/debugger.js. Run: node --test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PROB_ORDER, barData, circuitColumns, liveText } from '../js/debugger.js';
+import {
+  PROB_ORDER, barData, circuitColumns, liveText, statusRows, samplingLabel, describeChange, changedBars, hintFor, createLiveAnnouncer,
+} from '../js/debugger.js';
+import { l1snap } from './helpers.mjs';
 
 test('PROB_ORDER is the fixed game order', () => {
   assert.deepEqual(PROB_ORDER, ['00', '01', '10', '11']);
@@ -85,4 +88,160 @@ test('liveText: no Bell label, no measurement', () => {
 
 test('liveText: no snapshot yet', () => {
   assert.equal(liveText(null, null), '');
+});
+
+// ---------- Batch D helpers ----------
+test('circuitColumns: initial circuit comes first, flagged as prepared', () => {
+  const cols = circuitColumns([['x', 1]], [['h', 0], ['cx', 0, 1]]);
+  assert.deepEqual(cols, [
+    { kind: 'gate', label: 'H', qubit: 0, prep: true },
+    { kind: 'cx', label: 'CX', control: 0, target: 1, prep: true },
+    { kind: 'gate', label: 'X', qubit: 1 },
+  ]);
+  assert.deepEqual(circuitColumns([['h', 0]], []), [{ kind: 'gate', label: 'H', qubit: 0 }]);
+  assert.deepEqual(circuitColumns(undefined, undefined), []);
+});
+
+test('circuitColumns: ["run_circuit"] (and the tolerated legacy ["run"]) become a run barrier', () => {
+  for (const name of ['run_circuit', 'run']) {
+    const cols = circuitColumns([['h', 0], ['cx', 0, 1], [name], ['measure', 0, 1]]);
+    assert.deepEqual(cols[2], { kind: 'run', label: 'RUN' }, name);
+    assert.equal(cols.length, 4);
+  }
+  // Real engine history after a validated RUN.
+  const real = circuitColumns(l1snap('validated').history, l1snap('validated').initial_circuit);
+  assert.deepEqual(real.map((c) => c.kind), ['gate', 'cx', 'run']);
+});
+
+const snapOf = (over = {}) => ({
+  ket: '|00⟩', bell_label: null, entangled: false, source: 'statevector_fallback',
+  probs: { '00': 1, '01': 0, '10': 0, '11': 0 }, marginals: [[1, 0], [1, 0]],
+  stage_index: 0, stage_count: 1,
+  objective: { status: 'pending' },
+  ...over,
+});
+const rowMap = (rows) => Object.fromEntries(rows.map((r) => [r.name, r.value]));
+
+test('statusRows: Circuit / Measurement / Exits rows only for stages with a validated preparation', () => {
+  const plain = rowMap(statusRows(snapOf(), null));
+  for (const name of ['Circuit', 'Measurement', 'Exits']) assert.equal(name in plain, false, name);
+  const expected = {
+    initial: ['building', 'locked', 'locked'],
+    built: ['building', 'locked', 'locked'],
+    validated: ['validated ✓', 'unlocked', 'locked'],
+    measured_q0_0: ['measuring', 'unlocked', 'locked'],
+    complete_0: ['complete ✓', 'locked', 'unlocked'],
+    complete_1: ['complete ✓', 'locked', 'unlocked'],
+  };
+  for (const [name, [circuit, measurement, exits]] of Object.entries(expected)) {
+    const rows = rowMap(statusRows(l1snap(name), null));
+    assert.deepEqual([rows.Circuit, rows.Measurement, rows.Exits], [circuit, measurement, exits], name);
+  }
+  const failed = l1snap('validated', { circuit_validation: { ...l1snap('validated').circuit_validation, status: 'failed' } });
+  assert.equal(rowMap(statusRows(failed, null)).Circuit, 'failed');
+});
+
+test('statusRows: objective, stage and sampling', () => {
+  const rows = rowMap(statusRows(snapOf({ stage_index: 1, stage_count: 2, objective: { status: 'ready' } }), null));
+  assert.equal(rows.Objective, 'ready');
+  assert.equal(rows.Stage, '2 / 2');
+  assert.equal(rows.Sampling, 'local');
+  assert.equal(rowMap(statusRows(snapOf({ objective: { status: 'failed' } }), null)).Objective, 'failed');
+});
+
+test('samplingLabel: backend / local / mixed from the snapshot and the boot summary', () => {
+  assert.equal(samplingLabel('backend', null), 'backend');
+  assert.equal(samplingLabel('statevector_fallback', null), 'local');
+  assert.equal(samplingLabel('mixed', null), 'mixed');
+  assert.equal(samplingLabel(undefined, { source: 'backend' }), 'backend');
+  assert.equal(samplingLabel(undefined, null), 'local');
+  assert.equal(samplingLabel('statevector_fallback', { source: 'mixed' }), 'local (other states: backend)');
+  assert.equal(samplingLabel('backend', { source: 'mixed' }), 'backend');
+});
+
+const phi = snapOf({
+  ket: '0.707|00⟩ + 0.707|11⟩', bell_label: 'Phi+', entangled: true, marginals: [[0.5, 0.5], [0.5, 0.5]],
+  probs: { '00': 0.5, '01': 0, '10': 0, '11': 0.5 },
+});
+const psi = { ...phi, ket: '0.707|10⟩ + 0.707|01⟩', bell_label: 'Psi+', probs: { '00': 0, '01': 0.5, '10': 0.5, '11': 0 } };
+
+test('describeChange: Bob X on Phi+ names the Bell change and the correlation', () => {
+  const text = describeChange(phi, psi, { gate: 'x', qubit: 1, actor: 'bob' });
+  assert.ok(text.startsWith('Bob applied X to q1: Phi+ → Psi+ (results now always opposite)'), text);
+  assert.ok(/50\/50/.test(text), 'explains why doors do not change');
+});
+
+test('describeChange: Alice H from |00⟩ shows kets', () => {
+  const next = snapOf({
+    ket: '0.707|00⟩ + 0.707|10⟩', probs: { '00': 0.5, '01': 0, '10': 0.5, '11': 0 }, marginals: [[0.5, 0.5], [1, 0]],
+  });
+  assert.equal(describeChange(snapOf(), next, { gate: 'h', qubit: 0, actor: 'alice' }),
+    'Alice applied H to q0: |00⟩ → 0.707|00⟩ + 0.707|10⟩');
+});
+
+test('describeChange: a lone basis ket drops the engine\'s "1" coefficient', () => {
+  const text = describeChange(snapOf({ ket: '1|00⟩' }), snapOf({ ket: '1|10⟩' }), { gate: 'x', qubit: 0, actor: 'alice' });
+  assert.equal(text, 'Alice applied X to q0: |00⟩ → |10⟩');
+});
+
+test('describeChange: CNOT creating Phi+ reports entanglement', () => {
+  const prev = snapOf({ ket: '0.707|00⟩ + 0.707|10⟩', marginals: [[0.5, 0.5], [1, 0]] });
+  const text = describeChange(prev, phi, { gate: 'cx', qubit: 0, target: 1, actor: 'shared' });
+  assert.equal(text, 'CNOT applied: 0.707|00⟩ + 0.707|10⟩ → Phi+ (entangled; results now always the same)');
+});
+
+test('describeChange: Z on Phi+ gives Phi-, unchanged state is said so, run and measure', () => {
+  const minus = { ...phi, bell_label: 'Phi-', ket: '0.707|00⟩ - 0.707|11⟩' };
+  assert.ok(describeChange(phi, minus, { gate: 'z', qubit: 0, actor: 'alice' }).includes('Phi+ → Phi- (results now always the same)'));
+  assert.ok(describeChange(snapOf(), snapOf(), { gate: 'x', qubit: 0 }).includes('state unchanged'));
+  assert.equal(describeChange(phi, phi, { type: 'run' }), 'Circuit validated: Phi+ ✓');
+  assert.equal(describeChange(snapOf(), snapOf(), { type: 'measure', qubit: 1, outcome: 0 }), 'Bob measured q1: 0');
+  assert.equal(describeChange(null, snapOf(), { gate: 'x', qubit: 0 }), '');
+});
+
+test('changedBars: keys whose probability changed', () => {
+  assert.deepEqual(changedBars(phi, psi), ['00', '01', '10', '11']);
+  assert.deepEqual(changedBars(snapOf(), phi), ['00', '11']);
+  assert.deepEqual(changedBars(phi, phi), []);
+  assert.deepEqual(changedBars(null, phi), []);
+});
+
+test('hintFor: known engine codes map to short hints, unknown ones keep the engine message', () => {
+  assert.equal(hintFor('CIRCUIT_NOT_VALIDATED', 'x'), 'Build H then CX, then press Space to run.');
+  assert.equal(hintFor('CIRCUIT_INCOMPLETE', 'x'), 'Build H then CX, then press Space to run.');
+  assert.equal(hintFor('INVALID_CIRCUIT', 'x'), "Circuit isn't Phi+ yet — press R to reset.");
+  assert.equal(hintFor('CIRCUIT_LOCKED', 'x'), 'Circuit already validated — measure now.');
+  assert.equal(hintFor('VALIDATION_NOT_REQUIRED', 'x'), 'This stage has no run step.');
+  assert.equal(hintFor('STAGE_FINISHED', 'x'), 'Stage finished — head to the exits.');
+  assert.equal(hintFor('INVALID_ACTOR', 'x'), "That terminal isn't yours.");
+  assert.equal(hintFor('GATE_NOT_ALLOWED', 'x'), "That terminal isn't yours.");
+  assert.equal(hintFor('SOMETHING_ELSE', 'engine says no'), 'engine says no');
+  assert.equal(hintFor(undefined, 'plain'), 'plain');
+});
+
+test('hintFor: the codes the real engine returns for L1 RUN / measure map to hints', () => {
+  // Codes come from quantum/tests/test_l1_protocol.py (run before building, wrong order, measure before RUN).
+  for (const code of ['CIRCUIT_NOT_VALIDATED', 'CIRCUIT_INCOMPLETE', 'INVALID_CIRCUIT']) {
+    assert.notEqual(hintFor(code, 'engine text'), 'engine text', code);
+  }
+});
+
+test('hintFor: STAGE_FINISHED on a failed objective tells the player to retry', () => {
+  const failed = { objective: { status: 'failed' } };
+  assert.equal(hintFor('STAGE_FINISHED', 'x', failed), 'Stage failed — press R to retry.');
+  assert.equal(hintFor('STAGE_FINISHED', 'x', { objective: { status: 'ready' } }), 'Stage finished — head to the exits.');
+  assert.equal(hintFor('STAGE_FINISHED', 'x', null), 'Stage finished — head to the exits.');
+  assert.equal(hintFor('CIRCUIT_NOT_VALIDATED', 'x', failed), 'Build H then CX, then press Space to run.');
+});
+
+test('createLiveAnnouncer: identical text is announced once per action, again after a new action', () => {
+  const live = createLiveAnnouncer();
+  assert.equal(live.next('Error: blocked'), 'Error: blocked');
+  assert.equal(live.next('Error: blocked'), null); // refresh() twice in the same action
+  assert.equal(live.next('Other'), 'Other');
+  assert.equal(live.next('Other'), null);
+  live.newAction();
+  assert.equal(live.next('Other'), 'Other'); // same error triggered again by a new action
+  assert.equal(live.next('Other'), null);
+  assert.equal(live.next(''), '');
 });
