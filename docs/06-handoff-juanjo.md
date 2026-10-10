@@ -191,6 +191,8 @@ Fuente: salidas de consola/capturas compartidas por Juanjo el 2026-10-09; proyec
 | E4 StatePreparation superposición | IonQ Forte 1 simulator (29q) / 1 | Mismo target, equivalencia y signo local OK. Ops `measure:2,ry:1,rz:1,cx:1,p:1,sx:1`, sin reset. Counts Qiskit `{'00':109,'01':91}`, juego `{'00':109,'10':91}`; 200 shots, sin error. | 16.7 s |
 | E4 StatePreparation + H, interferencia | Built-in (24q), BasicSimulator / 1 | Ideal Qiskit 01 / juego 10 equivalente; ops `u2:2,measure:2,cx:1`, sin reset. Counts Qiskit `{'01':200}`, juego `{'10':200}`; sin error. | 5.5 s |
 | E4 StatePreparation + H, interferencia | IonQ Forte 1 simulator (29q) / 1 | Ideal equivalente; ops `rz:2,measure:2,ry:1,cx:1,rx:1`, sin reset. Counts Qiskit `{'01':200}`, juego `{'10':200}`; sin error. | 16.4 s |
+| Motor completo + pack 20 qubits | Qollab built-in (24q) / 1 | 21 estados, diez pares enviados, diez con fuente backend, `mixed`, sin error. L2/opposites: X de Bob → Ψ⁺, Alice=0/Bob=1, ambas medidas desde backend, objetivo ready, reset OK y `PRUEBA DEL MOTOR: OK`. | 18.7 s |
+| Motor completo + pack 20 qubits | Qollab IonQ Forte 1 simulator (29q) / 1 | Mismo resumen y fuente; Alice=1/Bob=0, objetivo ready, reset OK y prueba final OK. Plataforma imprime `Circuit execution time: 1000ms`; no equivale al tiempo total ni al puente JS. | 21.3 s |
 
 En la segunda ejecución individual de Forte, 3/200 shots (1.5 %) quedaron fuera del soporte ideal {00,11}; en la primera fue 1/200 (0.5 %). Son desviaciones observadas en **simulador**; no una tasa total de ruido, evidencia de hardware real ni prueba de la causa. Los counts permanecen en convención Qiskit; la prueba E3 sí formatea sus etiquetas en convención del juego.
 
@@ -245,7 +247,9 @@ Snapshots v2 separan `initial_circuit` de `history` (acciones únicamente). `amp
 
 Diez pares prioritarios: |++⟩, Φ⁺, los cuatro estados computacionales, Ψ⁺, Φ⁻, |+⟩Alice|0⟩Bob y |−⟩Alice|0⟩Bob. Cubren inicios, las ramas de victoria y soluciones canónicas; otros once estados del catálogo quedan con fuente local explícita. En Forte (29 qubits) se usan veinte, debajo del máximo catorce pares. Backend con capacidad menor reduce el pack, no fuerza veinte qubits. `packed_manifest` vincula cada state_key con sus qubits/bits clásicos y el resultado conjunto se marginaliza por par.
 
-**Evidencia:** pack de diez pares probado con BasicSimulator local en un único envío; **no** probado todavía por Juanjo en Forte. El documento de Jhoan registra su prueba de dieciséis qubits; eso no se presenta como prueba de este pack de veinte. Si este envío falla, el motor continúa local sin segundo job. `strategy="single"` solo puede elegirse antes del primer precompute, en un nuevo Run; no es un reintento automático.
+**Evidencia actual:** pack de diez pares probado localmente y **con el motor completo en Qollab Python**, en built-in y Forte. Ambos devolvieron `states:21,circuits:1,strategy:packed,submitted_states:10,backend_states:10,source:mixed,submission_attempted:true,reason:null`, con 200 shots. Gates/medición de L2/opposites y reset pasaron; ambas medidas usaron fuente backend. Esto sustituye la duda de compatibilidad de veinte qubits, no demuestra aún JS/canvas/1P/2P ni las otras etapas jugadas. Si el envío falla, el motor continúa local sin segundo job. `single` solo se elige antes del primer precompute en un nuevo Run.
+
+El panel de probabilidades de veinte bits es el resultado **conjunto de los diez pares independientes**: el motor extrae cada par mediante `packed_manifest`. No son veinte personajes, un nivel de veinte qubits ni una distribución de dos qubits mal formateada. `mixed` significa diez estados de backend y once locales; no un error. Los tiempos UI incluyen carga/runtime/espera; no sirven para E7. No calcular una tasa de ruido global a partir de esos listados sin separar soporte/marginales por estado.
 
 ### E5/E6 local — resultado reproducible
 
@@ -272,7 +276,7 @@ Validación final de entrega local: **111 tests pasaron**, sin skips; CLI `quant
 
 ### Lo que sigue, sin mezclar entrega con fase completada
 
-1. Jhoan consume snapshot v2 y prueba el probe anterior en built-in y Forte; registrar resultados de **esta implementación**, no reutilizar evidencia de scripts previos como si fuera integración.
+1. **Probe Python completo pasó en ambos.** Compartir resultados con Jhoan y consumir snapshot v2; no hace falta repetir los experimentos previos para avanzar.
 2. En proyecto JS, validar `callPromising`, stage/reset, cola de acciones, terminales/CX, salidas y recorrido de los mapas. Esto cierra el trabajo F0/F1 según exit gates del MD 01.
 3. E7: medir puente JS↔Python; no hay aún benchmark <20 ms ni garantía 60 fps.
 4. Probar un IBM noise model si disponible y revisar cómo se presenta mezcla/fallback/filtrado. El modo por defecto es conservador para cualquier backend; batch es opt-in solo en los compatibles.
@@ -282,3 +286,27 @@ Validación final de entrega local: **111 tests pasaron**, sin skips; CLI `quant
 Se incorporó el frontend de Jhoan desde `main` y se combinó `.gitignore` sin quitar reglas de ninguno. **Resolver ese conflicto no significa completar el puente real**: el bootstrap JS actual usa `LEVEL_ID='test'` y el mock/v1, mientras esta fachada admite `level1`–`level3` v2. El parser JS usa `[columna,fila]`; los terminales v2 usan `[fila,columna]`. La adaptación debe seleccionar `stages[stage_index]`, convertir coordenadas y respetar objetivo conjunto/indicadores no bloqueantes, terminal CX y avance/reset. Mantener el dev/mock funcional mientras se realiza ese trabajo; no cambiar `LEVEL_ID` a ciegas ni afirmar F0/F1 cerrado porque las suites aisladas pasan.
 
 Después de resolver el merge pasaron **111 tests Python y 124 tests JS**, sin fallos ni skips. Esto confirma que se preservan ambos componentes por separado, no una ejecución integrada del frontend con el backend Python en Qollab.
+
+### Próxima entrega del handoff: E7 y texto técnico
+
+- `dev/qollab-bridge/` contiene un diagnóstico **separado**, no reemplaza el frontend de Jhoan: llama a la fachada con `callPromising`, recibe counts, permite mover un cuadrado y mide eventos gates/measure/snapshot.
+- Cargar sus archivos como `index.html`, `main.js`, `probe.js`, `main.css`, `requirements.txt` en la raíz de un proyecto JS de prueba, junto a `quantum/`, `levels/` y el OGG. No modificar el proyecto Python ya validado. Referencia oficial: https://qollab.xyz/learn/docs/js-qiskit-projects.
+- El diagnóstico hace un solo precompute; excluye su tiempo de E7. Tres iteraciones de calentamiento, veinte muestras por operación; reporta p50/p95/máximo de llamada+JSON, sin DOM/render. Si p95 gates/medición excede 20 ms, E7 no alcanza el objetivo: registrar y optimizar con evidencia.
+- Ese proyecto puede demostrar F0 básico (canvas/teclado/counts) y E7, pero no el exit gate F1 del juego completo con colisiones, ambos terminales CX y modos 1P/2P. No dar esos gates por aprobados hasta que se ejecuten.
+- Después, entregar a Samuel el texto técnico en inglés de aproximadamente 300 palabras basado en evidencia, y cerrar con Jhoan la adaptación v2 y los recorridos.
+
+Validación del diagnóstico preparado: tres tests nuevos de JS verifican llamada async/errores JSON, percentiles y un solo precompute con veinte muestras tras calentamiento. Suite actual **111 tests Python + 127 tests JS** pasó. Esto valida el arnés, no proporciona todavía los tiempos reales E7.
+
+### Texto técnico para Samuel — borrador basado en evidencia
+
+El bloque siguiente está entregado para edición, no implica que el juego JS esté validado en Qollab. Mantener la distinción de integración pendiente hasta cerrar los exit gates.
+
+> Entangled is designed as a cooperative puzzle game in which Alice and Bob interact with a shared two-qubit register. Its puzzles depend on quantum amplitudes, not arbitrary random choices. Independent superpositions produce matching results only half the time, while a Bell pair produces correlated outcomes. Applying X changes correlation into anticorrelation. Relative phase becomes observable through interference, and CNOT can disentangle the register before a deterministic target is prepared.
+>
+> Python and Qiskit are the quantum source of truth. The engine evolves a full-precision Statevector, computes probabilities and reduced-state entanglement, and projects only the qubit explicitly measured. Correlation can make Bob's state definite without marking it measured: Bob can still apply a correction based on Alice's classically communicated result. Once a qubit is explicitly measured, gameplay gates touching it are rejected. Terminal uses and gate budgets are enforced by the same rules used by the solver.
+>
+> Qollab's IonQ integration accepted individual circuits but rejected circuit lists during our experiments. We therefore prepare ten priority two-qubit states as independent pairs in one twenty-qubit circuit and submit it once per execution. A classical-bit manifest extracts each pair's empirical counts from the joint result. Other reachable states use Qiskit sampling, and the engine reports backend, local, or mixed sources. Resets and level changes do not submit additional jobs.
+>
+> The complete Python probe passed on Qollab's built-in simulator and IonQ Forte 1 simulator. Local verification enumerated twenty-one physical states and confirmed the intended level strategies, including a three-gate deterministic core solution. Without gameplay CNOT, that core's best success probability is one half. The independent opening stage intentionally remains probabilistic.
+>
+> Backend statistics remain separate from ideal state probabilities. Impossible outcomes are filtered or sampled locally with diagnostics, so this is not a continuous noisy hardware trajectory. The JavaScript bridge, complete gameplay walkthrough, and event-latency measurements remain explicit integration checks.
