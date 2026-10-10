@@ -1,0 +1,94 @@
+{
+  "schema_version": 2,
+  "id": "level2",
+  "title": "Bell Block",
+  "num_qubits": 2,
+  "coordinate_convention": "[row, column], zero-based; map rows are listed top to bottom",
+  "integration_status": "requires_js_walkthrough",
+  "integration_notes": "Entity budget review is pending with Jhoan: opposites uses 11 entities and feed_forward uses 10 under the current count (players, sensors, exits, doors/gates, and terminals).",
+  "stages": [
+    {
+      "id": "opposites",
+      "title": "Opposites",
+      "initial_circuit": [["h", 0], ["cx", 0, 1]],
+      "gate_set": {"alice": [], "bob": ["x"], "shared": []},
+      "max_gates": 1,
+      "win": {"parity": "different"},
+      "required_measurements": [0, 1],
+      "failure_policy": "death",
+      "map": [
+        "####################",
+        "#A......###...T..B##",
+        "##n###m#####u###v###",
+        "##.....#####.....s##",
+        "#S.....E#########e##",
+        "####################",
+        "####################",
+        "####################",
+        "####################",
+        "####################",
+        "####################",
+        "####################"
+      ],
+      "legend": {"A": "alice_start", "B": "bob_start", "S": "sensor_q0", "s": "sensor_q1", "E": "exit_A", "e": "exit_B", "n": "door_A_north", "m": "door_A_south", "u": "door_B_north", "v": "door_B_south", "T": "bob_x_opposites", "#": "wall", ".": "floor"},
+      "objects": {
+        "door_A_north": {"type": "conditional_door", "qubit": 0, "open_on": 0, "lethal": false},
+        "door_A_south": {"type": "conditional_door", "qubit": 0, "open_on": 1, "lethal": false},
+        "door_B_north": {"type": "conditional_door", "qubit": 1, "open_on": 0, "lethal": false},
+        "door_B_south": {"type": "conditional_door", "qubit": 1, "open_on": 1, "lethal": false}
+      },
+      "terminals": [
+        {"id": "bob_x_opposites", "cell": [1, 14], "gate": "x", "owner": "bob", "qubit": 1, "uses": 1}
+      ],
+      "narration": {
+        "enter": "Flip Bob's bit; results must differ.",
+        "first_gate": "Bob: use X once before measuring.",
+        "first_measure": "Debugger shares classical results.",
+        "death": "Equal bits trigger the alarm.",
+        "glitch": "Fallback: sampled locally with Qiskit.",
+        "win": "Opposite bits open both exits."
+      }
+    },
+    {
+      "id": "feed_forward",
+      "title": "Feed-Forward",
+      "initial_circuit": [["h", 0], ["cx", 0, 1]],
+      "gate_set": {"alice": [], "bob": ["x"], "shared": []},
+      "max_gates": 1,
+      "win": {"q1": 0},
+      "required_measurements": [0, 1],
+      "failure_policy": "death",
+      "map": [
+        "####################",
+        "#A......###..T...B##",
+        "##n###m#######s#####",
+        "##.....#######d#####",
+        "#S.....E######e#####",
+        "####################",
+        "####################",
+        "####################",
+        "####################",
+        "####################",
+        "####################",
+        "####################"
+      ],
+      "legend": {"A": "alice_start", "B": "bob_start", "S": "sensor_q0", "s": "sensor_q1", "E": "exit_A", "e": "exit_B", "n": "alice_door_north", "m": "alice_door_south", "d": "gate_B", "T": "bob_x_feed_forward", "#": "wall", ".": "floor"},
+      "objects": {
+        "alice_door_north": {"type": "conditional_door", "qubit": 0, "open_on": 0, "lethal": false},
+        "alice_door_south": {"type": "conditional_door", "qubit": 0, "open_on": 1, "lethal": false},
+        "gate_B": {"type": "conditional_lethal_gate", "qubit": 1, "open_on": 0, "lethal": true}
+      },
+      "terminals": [
+        {"id": "bob_x_feed_forward", "cell": [1, 13], "gate": "x", "owner": "bob", "qubit": 1, "uses": null}
+      ],
+      "narration": {
+        "enter": "Measure Alice; correct Bob if needed.",
+        "first_gate": "Bob: use X after Alice measures 1.",
+        "first_measure": "Alice=1 defines Bob as 1, not measured.",
+        "death": "q1=1 triggers the lethal gate.",
+        "glitch": "Fallback: sampled locally with Qiskit.",
+        "win": "Bob measures 0; exits unlock."
+      }
+    }
+  ]
+}

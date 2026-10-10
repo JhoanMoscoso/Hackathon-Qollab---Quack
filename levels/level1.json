@@ -1,0 +1,89 @@
+{
+  "schema_version": 2,
+  "id": "level1",
+  "title": "Calibration",
+  "num_qubits": 2,
+  "coordinate_convention": "[row, column], zero-based; map rows are listed top to bottom",
+  "design_notes": "The individual quantum objects door_A and door_B are non-blocking indicators, not exclusive doors. Both routes remain open for 00 and 11. The objective-controlled joint lock permits the exits only when the measured parity is equal. The independent stage succeeds with probability 1/2 per attempt; retry_stage does not guarantee eventual success in any finite number of attempts. The shared debugger communicates classical measurement records; neither player can signal through entanglement.",
+  "integration_status": "requires_js_walkthrough",
+  "stages": [
+    {
+      "id": "independent",
+      "title": "Independent Lock",
+      "initial_circuit": [["h", 0], ["h", 1]],
+      "gate_set": {"alice": [], "bob": [], "shared": []},
+      "max_gates": 0,
+      "win": {"parity": "equal"},
+      "required_measurements": [0, 1],
+      "failure_policy": "retry_stage",
+      "map": [
+        "####################",
+        "#A.D..E#####e..d.B##",
+        "#.......###.......##",
+        "#.S.....###.....s.##",
+        "####################",
+        "####################",
+        "####################",
+        "####################",
+        "####################",
+        "####################",
+        "####################",
+        "####################"
+      ],
+      "legend": {"A": "alice_start", "B": "bob_start", "S": "sensor_q0", "s": "sensor_q1", "E": "exit_A", "e": "exit_B", "D": "door_A", "d": "door_B", "#": "wall", ".": "floor"},
+      "objects": {
+        "door_A": {"type": "indicator", "qubit": 0, "open_on": 0, "blocking": false},
+        "door_B": {"type": "indicator", "qubit": 1, "open_on": 0, "blocking": false},
+        "joint_lock": {"type": "objective_controlled_joint_lock", "win_condition": "parity_equal", "controls_exits": true}
+      },
+      "terminals": [],
+      "narration": {
+        "enter": "Independent qubits; match the bits.",
+        "first_gate": "No gates available in this stage.",
+        "first_measure": "Debugger shares classical results.",
+        "death": "Parity mismatch. Retry this stage.",
+        "glitch": "Fallback: sampled locally with Qiskit.",
+        "win": "Matching bits unlock both exits."
+      }
+    },
+    {
+      "id": "entangled",
+      "title": "Entangled Lock",
+      "initial_circuit": [["h", 0], ["cx", 0, 1]],
+      "gate_set": {"alice": [], "bob": [], "shared": []},
+      "max_gates": 0,
+      "win": {"parity": "equal"},
+      "required_measurements": [0, 1],
+      "failure_policy": "retry_stage",
+      "map": [
+        "####################",
+        "#A.D..E#####e..d.B##",
+        "#.......###.......##",
+        "#.S.....###.....s.##",
+        "####################",
+        "####################",
+        "####################",
+        "####################",
+        "####################",
+        "####################",
+        "####################",
+        "####################"
+      ],
+      "legend": {"A": "alice_start", "B": "bob_start", "S": "sensor_q0", "s": "sensor_q1", "E": "exit_A", "e": "exit_B", "D": "door_A", "d": "door_B", "#": "wall", ".": "floor"},
+      "objects": {
+        "door_A": {"type": "indicator", "qubit": 0, "open_on": 0, "blocking": false},
+        "door_B": {"type": "indicator", "qubit": 1, "open_on": 0, "blocking": false},
+        "joint_lock": {"type": "objective_controlled_joint_lock", "win_condition": "parity_equal", "controls_exits": true}
+      },
+      "terminals": [],
+      "narration": {
+        "enter": "Bell pair: results match, 00 or 11.",
+        "first_gate": "No gates available in this stage.",
+        "first_measure": "Debugger shares classical results.",
+        "death": "Parity mismatch. Retry this stage.",
+        "glitch": "Fallback: sampled locally with Qiskit.",
+        "win": "Matching bits unlock both exits."
+      }
+    }
+  ]
+}

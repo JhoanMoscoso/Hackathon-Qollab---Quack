@@ -24,6 +24,8 @@ Sincronización repo → Qollab: zip de la raíz del repo (sin `docs/`, sin `.gi
 
 ### Esqueleto mínimo para validar F0
 
+**Actualización de Juanjo:** el esqueleto siguiente es histórico. No ejecutar `hello` y `precompute` en el mismo Run IonQ: consumiría dos envíos. El motor real y el pack de veinte qubits ya pasaron en Qollab Python; el diagnóstico vigente para canvas + puente y E7 está en `dev/qollab-bridge/`, con instrucciones en `docs/06-handoff-juanjo.md`. Sus archivos HTML/JS/CSS/requirements van en la raíz del proyecto de prueba, junto a `quantum/` y `levels/`; no reemplazar el frontend de Jhoan sin coordinar.
+
 `index.html`
 ```html
 <div id="loading">Loading quantum runtime…</div>
