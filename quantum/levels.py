@@ -224,11 +224,32 @@ def read_level(level_id: str) -> dict:
     return validate_level(data)
 
 
-def audio_payload() -> dict:
-    """Optional soundtrack, represented by JSON-compatible base64 rather than a proxy."""
-    with open("audio/soundtrack.ogg", "rb") as handle:
-        data = handle.read(2 * 1024 * 1024 + 1)
-    if len(data) > 2 * 1024 * 1024:
-        raise ValueError("Soundtrack exceeds the 2 MB asset limit")
+AUDIO_TRACKS = ("menu", "level1", "level2")
+AUDIO_MAX_BYTES = 2 * 1024 * 1024
+
+
+class InvalidTrack(ValueError):
+    code = "INVALID_TRACK"
+
+
+def audio_payload(track: str = "menu") -> dict:
+    """Background track as JSON-compatible base64 (no proxies). Fixed track -> file map.
+
+    Separate literal open() calls are intentional: Qollab's file access relies on literal paths.
+    Levels 2 and 3 share the "level2" track.
+    """
+    if not isinstance(track, str) or track not in AUDIO_TRACKS:
+        raise InvalidTrack(f"Unknown audio track; expected one of {', '.join(AUDIO_TRACKS)}")
+    if track == "menu":
+        with open("audio/fondo_inicio.ogg", "rb") as handle:
+            data = handle.read(AUDIO_MAX_BYTES + 1)
+    elif track == "level1":
+        with open("audio/fondo_1.ogg", "rb") as handle:
+            data = handle.read(AUDIO_MAX_BYTES + 1)
+    else:
+        with open("audio/fondo_2.ogg", "rb") as handle:
+            data = handle.read(AUDIO_MAX_BYTES + 1)
+    if len(data) > AUDIO_MAX_BYTES:
+        raise ValueError("Audio track exceeds the 2 MB asset limit")
     return {"mime": "audio/ogg", "encoding": "base64",
             "data": base64.b64encode(data).decode("ascii")}

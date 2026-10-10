@@ -70,8 +70,11 @@ def advance_stage() -> str
 # Solo desde objective.quantum_ready; JS debe confirmar ambas salidas antes de llamarlo.
 # Última etapa devuelve code LEVEL_COMPLETE; JS puede cargar el próximo nivel.
 
-def load_audio() -> str
-# JSON {mime,encoding:"base64",data}; ausencia devuelve code AUDIO_UNAVAILABLE.
+def load_audio(track: str = "menu") -> str
+# track: "menu" (audio/fondo_inicio.ogg) | "level1" (fondo_1.ogg) | "level2" (fondo_2.ogg, también niveles 2 y 3).
+# JSON {mime,encoding:"base64",data}; pista desconocida -> code INVALID_TRACK;
+# archivo ausente o >2 MB -> code AUDIO_UNAVAILABLE. Rutas literales separadas (requisito de Qollab).
+# JS la llama bajo demanda (primera vez que necesita la pista) y cachea el buffer decodificado; nunca por frame.
 
 def snapshot() -> str
 ```

@@ -69,6 +69,7 @@ button:hover { border-color: var(--alice); }
 #start-2p { border-color: var(--bob); }
 .check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
 .check input { width: 20px; height: 20px; accent-color: var(--alice); }
+.check + .check { margin-left: 20px; }
 .controls { color: var(--muted); padding-left: 20px; max-width: 70ch; }
 .controls strong { color: var(--text); }
 

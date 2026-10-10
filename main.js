@@ -15,6 +15,7 @@ import { fitCanvas, debounce } from './js/layout.js';
 import { createDebugger, describeChange, hintFor } from './js/debugger.js';
 import { loadSprites } from './js/sprite_loader.js';
 import { withTimeout } from './js/async_util.js';
+import { createAudio, trackForLevel, gateSfx } from './js/audio.js';
 
 /* global backend -- Qollab provides the quantum backend as a global; dev/index.html defines a stub. */
 const DEFAULT_LEVEL = 'level1';
@@ -34,6 +35,11 @@ const NOTES = {
 };
 
 const canvas = $('canvas');
+// Music data comes from the engine on demand (first time a track is needed). Deliberately NOT through call():
+// an audio failure is only logged and must never show up as a game/debugger error.
+const audio = createAudio({
+  fetchTrack: async (track) => JSON.parse(await engine.load_audio.callPromising(track)),
+});
 const dbg = createDebugger({ state: $('debugger-state'), circuit: $('debugger-circuit') }, $('a11y-live'));
 const reduceBox = $('reduce-motion');
 reduceBox.checked = !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -141,7 +147,7 @@ const sm = createStateMachine({
     if (next !== 'dead') { clearTimeout(deathTimer); deathTimer = null; }
     for (const id of new Set(Object.values(SCREENS))) $(id).hidden = id !== SCREENS[next];
     overlay = next === 'dead' || next === 'win' ? next : null;
-    if (next === 'menu') { input?.dispose(); input = null; }
+    if (next === 'menu') { input?.dispose(); input = null; audio.playMusic('menu'); }
     if (next === 'level') showMenuError(null);
     if (SCREENS[next] === 'game') fitCanvasToBoard(true);
     if ($('click-to-play').hidden) focusTarget().focus();
@@ -175,6 +181,7 @@ async function startGame(chosen) {
     overlayMessage = undefined;
     newInput();
     sm.setState(STATES.LEVEL);
+    audio.playMusic(trackForLevel(id));
     refresh(`${lvl.title ?? id} started.`);
   } finally { busy = false; }
 }
@@ -202,6 +209,7 @@ async function restartStage() {
 }
 
 function die() {
+  audio.play('death');
   overlayMessage = 'Restarting stage...';
   sm.setState(STATES.DEAD);
   refresh('Wavefunction collapsed. Restarting the stage.');
@@ -237,6 +245,7 @@ async function handleComplete(ep) {
   if (done < (snap.stage_count ?? 1) - 1) {
     const s = await call('advance_stage');
     if (ep !== epoch || !s) return;
+    audio.play('win');
     epoch++; pending = []; // the old world is gone: drop everything still in flight
     snap = s; lastMeasure = null;
     try { buildWorld(); } catch (e) { sm.setState(STATES.MENU); showMenuError(e.message); return; }
@@ -245,6 +254,7 @@ async function handleComplete(ep) {
     return;
   }
   overlayMessage = undefined;
+  audio.play('win');
   sm.setState(STATES.WIN);
   refresh('Level complete. Press Enter to return to the menu.');
 }
@@ -273,13 +283,16 @@ async function runIntent(intent, ep) {
   let before = null; // snapshot before the first state change of this intent (for the bar highlight)
   for (const ev of events) {
     if (ev.type === 'death') return die();
-    if (ev.type === 'blocked') note = NOTES[ev.reason] ?? null;
+    if (ev.type === 'move') { if (!events.some((e) => e.type === 'death')) audio.play('step', { key: ev.player }); }
+    else if (ev.type === 'blocked') note = NOTES[ev.reason] ?? null;
     else if (ev.type === 'info') note = NOTES[ev.reason];
     else if (ev.type === 'measure') {
       const prev = snap;
+      audio.play('measure');
       const r = await call('measure', ev.qubit);
       if (ep !== epoch) return; // Esc / restart while the call was in flight: drop the result
       if (r) {
+        audio.play(`collapse${r.outcome ? 1 : 0}`, { delay: 0.12 });
         snap = r.snapshot; lastMeasure = { qubit: r.qubit, outcome: r.outcome };
         note = describeChange(prev, snap, { type: 'measure', qubit: r.qubit, outcome: r.outcome });
         before ??= prev;
@@ -289,6 +302,7 @@ async function runIntent(intent, ep) {
       const s = await call('apply_gate', ev.gate, ev.qubit, ev.target, ev.terminalId, ev.actor);
       if (ep !== epoch) return;
       if (s) {
+        audio.play(gateSfx(ev.gate));
         snap = s; consumeTerminal(ev.terminal);
         note = describeChange(prev, s, { gate: ev.gate, qubit: ev.qubit, actor: ev.actor });
         before ??= prev;
@@ -335,14 +349,27 @@ window.addEventListener('keydown', (e) => {
   const s = sm.state;
   // Esc works even while an engine call is in flight: the epoch guard drops its late result.
   if (e.code === 'Escape' && (s === 'level' || s === 'dead' || s === 'win')) sm.setState(STATES.MENU);
+  else if (e.code === 'KeyM' && s !== 'menu' && s !== 'loading') toggleSound();
   else if (busy) return;
   else if (s === 'level' && e.code === 'KeyR') restartStage();
   else if (s === 'win' && (e.code === 'Enter' || e.code === 'Space')) { e.preventDefault(); sm.setState(STATES.MENU); }
 });
-$('start-1p').addEventListener('click', () => startGame('1p'));
-$('start-2p').addEventListener('click', () => startGame('2p'));
+// Browsers only allow audio after a user gesture: the first click or key press unlocks the AudioContext.
+for (const type of ['pointerdown', 'keydown']) window.addEventListener(type, () => audio.unlock(), { capture: true });
+const soundBox = $('sound');
+const applySound = () => audio.setMuted(!soundBox.checked);
+function toggleSound() { // M key (in a level): works while the menu checkbox is hidden, and keeps both in sync
+  soundBox.checked = !soundBox.checked;
+  applySound();
+  $('a11y-live').textContent = soundBox.checked ? 'Sound on.' : 'Sound off.';
+}
+soundBox.addEventListener('change', applySound);
+$('start-1p').addEventListener('click', () => { audio.play('click'); startGame('1p'); });
+$('start-2p').addEventListener('click', () => { audio.play('click'); startGame('2p'); });
+for (const radio of document.querySelectorAll('input[name="level"]')) radio.addEventListener('change', () => audio.play('click'));
 reduceBox.addEventListener('change', () => renderer.setReduceMotion(reduceBox.checked));
 $('click-to-play').addEventListener('click', (e) => {
+  audio.play('click');
   e.currentTarget.hidden = true;
   focusTarget().focus();
 });
