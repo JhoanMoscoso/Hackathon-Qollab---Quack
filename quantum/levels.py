@@ -159,7 +159,14 @@ def validate_level(level: dict) -> dict:
             expected_qubit = 0 if gate == "cx" else 1 if owner == "bob" else 0
             if type(terminal.get("qubit")) is not int or terminal["qubit"] != expected_qubit:
                 raise ValueError("Terminal qubit does not match its owner")
-            if check_cell(terminal.get("cell")) != tid:
+            placement = terminal.get("placement", "map")
+            if placement not in {"map", "hud"}:
+                raise ValueError("Terminal placement must be map or hud")
+            if placement == "hud":
+                if (owner not in {"alice", "bob"} or gate == "cx"
+                        or "cell" in terminal or "target_cell" in terminal):
+                    raise ValueError("HUD terminals must be owned single-qubit gates without map cells")
+            elif check_cell(terminal.get("cell")) != tid:
                 raise ValueError("Terminal cell must reference its id in legend")
             if gate == "cx":
                 if type(terminal.get("target")) is not int or terminal["target"] != 1:

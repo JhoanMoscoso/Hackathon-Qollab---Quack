@@ -140,7 +140,8 @@ Convención: `q0` = Alice, `q1` = Bob. Objetos: `open_on` = valor que lo deja pa
 
 ### L3 — The Core. Gate set: Alice `["h","z"]`, Bob `["x"]`, shared `["cx"]`. `max_gates: 5`. Una etapa.
 - `initial_circuit = [["h",0],["cx",0,1]]` (Φ⁺). Alice: `bridge_A(q0, open_on 1, lethal: true)` (0 = cae). Bob: `laser_B(q1, open_on 0, lethal: true)` (1 = vaporizado). `win: {"q0": 1, "q1": 0}`.
-- A ciegas: p = 0.0 (siempre muere uno). Solución canónica: `CX(0,1)` → `|+⟩|0⟩`; `Z(0)` → `|−⟩|0⟩`; `H(0)` → `|10⟩`. Verifica que E6 la encuentra y que no hay solución sin CX.
+- A ciegas p=0.0. Solución CX→Z(0)→H(0): Φ⁺→+0→−0→10. E6 confirma tres gates mínimas; sinCXmáximo0.5: **no solución determinista**, no imposibilidad de ganar algún intento.
+- H/Z de Alice y X de Bob son HUD (usos2/1/1). CX placas `[4,8]`/`[4,11]`, un uso. Sensores `[7,1]`/`[7,18]` preceden peligros/salidas y no pueden evitarse. Diez entidades físicas; §11.
 - Stretch (solo si L1–L3 están jugables): `q2` = puerta de salida compartida; estado inicial GHZ `[["h",0],["cx",0,1],["cx",1,2]]`, `win: {"q0":1,"q1":0,"q2":0}`. Calcula la solución con E6 antes de proponerlo.
 
 ## 3. Orden de implementación de `quantum/engine.py`
@@ -218,7 +219,7 @@ En la segunda ejecución individual de Forte, 3/200 shots (1.5 %) quedaron fuera
 
 ## 7. Entrega implementada para Jhoan
 
-Entrega inicial en `feat/juanjo-quantum-engine`, revisiones L1/L2 sobre main con UI real de Jhoan y assets/OGG de Fernanda. L1/L2 actuales tienen diez entidades físicas; HUD de comunicación no suma celdas. L3 conserva pendiente de presupuesto/walkthrough. Budgets y protocolos vigentes en §9–10, no usar los antiguos JSON de dos etapas L2.
+Entrega inicial en `feat/juanjo-quantum-engine`, revisiones L1/L2/L3 sobre UI real de Jhoan y assets del equipo. Los tres mapas tienen diez entidades. Protocolos Python de los tres niveles ya pasaron en Qollab built-in/Forte; recorridos visuales/audio/1P2P pendientes. Protocolos §9–11; no usar antiguos JSON de dos etapas L2.
 
 ### Archivos y API
 
@@ -358,8 +359,8 @@ Ambos reportes: `states:21`, `circuits:1`, `strategy:packed`, `submitted_states:
 
 1. Conservar proyectos/salidas; Juanjo ya confirmó clic/foco y movimiento del cuadrado en ambos.
 2. Adaptación Jhoan v2: etapa, coordenadas, terminal IDs y actor; L1 añade botón RUN, sensores bloqueados antes y colisiones por door_states. CX de Bob requiere control0/target1, no inferir qubit desde owner; L3 conserva ambas placas. Mantener objetivos/salidas/reset/advance.
-3. L1 en Qollab Python pasó y Jhoan integró su UI en PR6; walkthrough pendiente. NuevoL2conHUD necesita su probe/recorrido. Luego tres etapas para F2/F3. E7/F0 básico no sustituyen gameplay.
-4. L2 nuevo cumple diez entidades; revisar presupuesto L3 y regla de glitches. IBM noise model queda pendiente antes de entrega final, no bloqueo de E7.
+3. L1/L2 protocolosPython pasaron; queda recorrido visual, luego probar nuevoL3 (§11). Tres etapas para F2/F3. E7/F0 básico no sustituyen gameplay.
+4. L3 ahora cumple diez entidades; regla de glitches/IBM noise model sigue pendiente antes de entrega final.
 5. Samuel recibe el borrador técnico actualizado de §7 con métricas E7 verificadas. Los entregables de código/snapshot/E1–E7 de Juanjo quedan registrados; integración espacial/juego completo sigue siendo trabajo conjunto.
 
 ## 9. Revisión L1 — preparación validada y desbloqueo físico
@@ -467,4 +468,49 @@ La rama Bob0→AliceX→00 tiene prueba local forzada, no se observó en estos d
 
 El MD06 define The Core y `levels/level3.json` ya tiene una base: re-preparar Φ⁺, AliceH/Z, BobX, CX compartida0→1, presupuesto5, victoria10 tras ambas medidas y salidas. Solución canónica CX→Z(0)→H(0): Φ⁺→+0→−0→10. BridgeAlice abre1; laserBob abre0; bits incorrectos son letales. El solver local confirma solución determinista de tres gates; sin CX la mejor probabilidad es0.5, no victoria imposible en todo intento.
 
-No hace falta otra especificación de física para refinar L3. Su mapa actual estima13 entidades frente al límite10: reorganizar interacciones y coordinar arte/activación con Jhoan, manteniendo gates/operandos y acceso antes de sensores/peligros. Después revisar resolución y presupuesto del pack existente y recorrerlo en Qollab. GHZ/tres qubits continúa fuera hasta que L1–L3 sean jugables. Esta actualización solo documenta resultados/alcance; no modifica el JSON de L3 ni inventa un protocolo RUN/SEND para ese nivel.
+La base previa tenía13 entidades; §11 lo resuelve llevando H/Z/X al HUD sin quitar gates ni sumar pares al pack. GHZ fuera hasta que L1–L3 sean jugables; no se añade RUN/SEND aL3.
+
+## 11. L3 The Core — entrega con diez entidades
+
+Implementación autorizada por Juanjo, rama `feat/juanjo-l3-core`. Se basa en L2/PR8 y preserva frontend/arte del equipo. Sin funciones nuevas de test: solo expectativas existentes adaptadas a mapa/HUD. Si PR8 sigue abierto, PRL3 usa su rama como base para no duplicar la entrega y se integra después de ella.
+
+### Reglas y controles
+
+- Re-prepara Φ⁺: L2 terminó medido00/01. Etapa `core`, qubits2, max_gates5.
+- HUD: AliceH (H, usos2), AliceZ (Z, uso1), BobX (X, uso1). Mismos IDs/operandos/contadores de apply_gate; no consumo simulado en JS.
+- CX: Alice control `[fila4,col8]`, Bob target `[fila4,col11]`, luego E/Enter según modo. Ambos requeridos; no CX desde HUD.
+- Alice: sensor `[7,1]`→puente `[8,1]`→salida `[9,1]`; Bob espejo col18. Paredes impiden bypass lateral/inferior. Placas accesibles desde spawns sin sensores.
+- Puente seguro1/láser seguro0; superposición bloquea, bit incorrecto mata. Victoria: medidas explícitas10 y ambos personajes en salidas. Sin RUN/SEND.
+- Diez entidades: dos jugadores/sensores/peligros/salidas/placasCX. HUD no suma celdas. Tablero20×12, muro9–10, textos≤2líneas40caracteres.
+
+### Comprobación existente
+
+CX produce+0/entropía0; Z produce−0 sin cambiar probabilidadesZ; H produce10. E6: p óptima1/ciega0, mínimo3gates, sinCXmáximo0.5,20vectores/245nodos enL3. Catálogo global20/diez prioridades existentes; ningún nuevo backend.run por nivel/gate/medida/reset.
+
+`dev/qollab-l3/main.py` hace un precompute y comprueba pasos/bits1/0/objetosseguros/reset. Pasó localmente y en Qollab built-in/Forte según evidencia siguiente. No prueba placas simultáneas ni HUD/escape visual.
+
+Validación reutilizada: **101 tests Python existentes y 202 tests JS existentes pasaron**, sin agregar casos/funciones de test. Solo se adaptaron coordenadas/fixtures/HUD. Verificador confirmó métricas anteriores y probe BasicSimulator terminó `L3 THE CORE: OK`. No ensayos estadísticos nuevos ni GHZ.
+
+### Próxima acción
+
+1. **Probe Python completado en ambos.** Conservar Q-Quack L3 protocol/ZIP/salidas; no repetir sin regresión. Próximo trabajo es el juego JS con los PR8/10 integrados en orden.
+2. Juego real, elegirL3. Ambos a placasCX, activar una vez; AliceZ y AliceH; medir ambos entrando a carriles; cruzar peligros seguros a ambas salidas. HUD/1P/2P se comprueban visualmente, no por consola.
+3. MD01F3 exige tres niveles completos, accesibilidad y consola sin errores. Audio/walkthrough/Qollab completo siguen pendientes, no se aprueban por E6.
+4. `audio/fondo_3.ogg` heredado de main mide2,452,385bytes (>2MB): comprimir antes de subirlo a Qollab. El probe usa solo `soundtrack.ogg` válido; no se alteraron assets ajenos ni se agregó ese archivo grande al ZIP.
+
+ZIP conservado para reproducibilidad: `/home/juanm/singularity-tmp/opencode/qollab-juanjo-l3-core.zip`, catorce archivos, main/requirements en raíz. Ya ejecutado en ambos. No reutilizar ese proyecto Python como si fuera el juego JS; conserva los proyectos diagnósticos.
+
+### L3 en Qollab — protocolo completo validado
+
+Fuente: reportes de **Q-Quack L3 protocol** enviados por Juanjo, 2026-10-10. Ambos finalizaron sin traceback y con `L3 THE CORE: OK (quantum protocol, not a shared-plate/spatial gameplay test)`.
+
+| Backend | Tiempo UI | Resumen precompute | Secuencia/medidas | Fuentes | Reset |
+|---|---|---|---|---|---|
+| Built-in simulator (24q) | 13.7 s | 20 estados,1 circuito packed,10backend,mixed,reason null | CX→+0,Z→−0,H→10;Alice1/Bob0,objetivo listo/peligros seguros | backend/backend | Bell y recursos restaurados |
+| Forte 1 simulator (29q) | 20.0 s | Mismo resumen | Misma secuencia/resultado | backend/backend | Correcto |
+
+El probe comprobó Φ⁺ fresco, ausencia de entrelazamiento tras CX, Z sin modificar probabilidades en base Z, H preparando10, ambas observaciones y valores bridge1/laser0 seguros. Los kets/evolución son cálculo ideal del motor; fuente backend significa muestreo desde counts precomputados y proyección ideal, no puertas remotas ejecutadas en tiempo real ni tomografía de fase en hardware. Histogramas20bits = distribución conjunta del pack; no inferir tasa global de ruido de sus listados.
+
+Forte imprimió `Circuit execution time: 1000ms`, separado del total20s. Ninguna de estas salidas mide E7/precompute aislado ni demuestra render60fps. No comparar13.7/20.0 con Runs anteriores como mejora garantizada; carga/colas/runtime varían.
+
+**Balance del handoff06:** motor, JSONL1–L3, snapshots, catálogo/verificador, probes y evidencia Python de los tres niveles entregados. E7/diagnóstico JS previo también validado en su escenario. Falta jugar el frontend completo: CX física simultánea, controles H/Z/X, sensores, muerte/reset, salidas, audio y 1P/2P. Esos son gates de F2/F3 del MD01, no se aprueban automáticamente por la consola. No se agregó código/tests nuevos para registrar estos resultados.

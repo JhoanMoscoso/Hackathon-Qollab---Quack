@@ -373,7 +373,13 @@ test('sprites: sensors use idle until measured, then the measured value', () => 
 }));
 
 test('sprites: terminals pick the gate sprite; used ones are dimmed but keep a full-alpha check mark', () => withSprites(() => {
-  const world = worldOf(3);
+  // Renderer fixture keeps physical gates; the shipped L3 moves them to HUD.
+  const v = structuredClone(levelView(3));
+  for (const [i, terminal] of v.terminals.filter((t) => t.placement === 'hud').entries()) {
+    delete terminal.placement;
+    terminal.cell = [[4, 2], [5, 2], [16, 2]][i];
+  }
+  const world = createWorld(parseLevel(v));
   const [h, , x] = world.terminals; // alice_h, alice_z, bob_x
   const draw = (used) => {
     world.terminals[0].usesLeft = used ? 0 : 1;
@@ -395,7 +401,9 @@ test('sprites: terminals pick the gate sprite; used ones are dimmed but keep a f
 test('sprites: cnot cells use control/target sprites and keep the cable', () => withSprites(() => {
   // L3's CX cells are far apart; move the target next to the control so the cable is drawn too.
   const v = structuredClone(levelView(3));
-  v.terminals.find((t) => t.target_cell).target_cell = [5, 3];
+  const shared = v.terminals.find((t) => t.target_cell);
+  shared.cell = [4, 3];
+  shared.target_cell = [5, 3];
   const world = createWorld(parseLevel(v));
   const { ctx, calls } = recCtx();
   createRenderer(canvasWith(ctx)).draw(world, l3snap(), view(), 0);
