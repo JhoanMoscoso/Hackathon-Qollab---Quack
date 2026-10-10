@@ -1,0 +1,120 @@
+/* Entangled: single stylesheet (Qollab loads only main.css). */
+:root {
+  --bg: #0e1116;
+  --panel: #171c26;
+  --panel-2: #232b3a;
+  --border: #3f4c63;
+  --text: #e8ecf2;      /* 15:1 on --bg */
+  --muted: #b4bfce;     /* 10:1 on --bg */
+  --alice: #4adbe6;
+  --bob: #f5a742;
+  --zero: #5bbf6a;
+  --one: #d64550;
+  --super: #a66cff;
+  --error: #ff8a93;     /* 7:1 on --panel */
+  --focus: #ffd84d;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body {
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding: 16px;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+[tabindex="-1"]:focus { outline: none; }
+
+#app { max-width: 1100px; margin: 0 auto; }
+.screen-title { font-family: var(--mono); letter-spacing: 0.08em; margin: 0 0 8px; }
+.sub { font-size: 1.1rem; margin: 24px 0 8px; }
+.hint { color: var(--muted); max-width: 60ch; }
+
+button {
+  font: inherit; font-weight: 600;
+  color: var(--text); background: var(--panel-2);
+  border: 2px solid var(--border); border-radius: 6px;
+  padding: 10px 20px; cursor: pointer;
+}
+button:hover { border-color: var(--alice); }
+
+#click-to-play {
+  position: fixed; inset: 0; z-index: 10;
+  width: 100%; border: 0; border-radius: 0;
+  background: rgba(14, 17, 22, 0.94);
+  font-size: 2rem; letter-spacing: 0.05em;
+}
+#click-to-play:focus-visible { outline-offset: -8px; }
+
+.menu-actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+#start-1p { border-color: var(--alice); }
+#start-2p { border-color: var(--bob); }
+.check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.check input { width: 20px; height: 20px; accent-color: var(--alice); }
+.controls { color: var(--muted); padding-left: 20px; max-width: 70ch; }
+.controls strong { color: var(--text); }
+
+#load-status { font-size: 1.1rem; }
+
+#game { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+
+#canvas {
+  display: block;
+  width: 100%; max-width: 640px; height: auto; aspect-ratio: 640 / 384;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  image-rendering: pixelated;
+}
+
+#debugger {
+  flex: 1 1 300px; min-width: 280px; max-width: 100%;
+  background: var(--panel); border: 2px solid var(--border); border-radius: 6px;
+  padding: 12px 16px; font-family: var(--mono); font-size: 0.9rem;
+}
+.dbg-title { font-size: 1rem; margin: 0 0 8px; letter-spacing: 0.05em; }
+.dbg-sub { font-size: 0.85rem; margin: 12px 0 4px; color: var(--muted); font-weight: 600; }
+.dbg-ket { font-size: 1.1rem; margin: 0 0 12px; overflow-wrap: anywhere; }
+
+.dbg-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.dbg-bar { display: grid; grid-template-columns: 3.2em 1fr 4.6em; align-items: center; gap: 8px; }
+.dbg-bar-track { display: block; height: 14px; background: var(--panel-2); border: 1px solid var(--border); }
+.dbg-bar-fill { display: block; height: 100%; width: 0; background: var(--alice); }
+.dbg-bar-pct { text-align: right; }
+
+.dbg-circuit { display: block; max-width: 100%; height: auto; }
+.c-wire { stroke: var(--muted); stroke-width: 1.5; }
+.c-label { fill: var(--text); font: 11px var(--mono); }
+.c-box { fill: var(--panel-2); stroke: var(--text); stroke-width: 1.5; }
+.c-meas { stroke: var(--super); }
+.c-text { fill: var(--text); font: bold 12px var(--mono); }
+.c-link { stroke: var(--text); stroke-width: 2; }
+.c-dot { fill: var(--text); }
+.c-xor { fill: var(--panel); stroke: var(--text); stroke-width: 2; }
+.c-xor-line { stroke: var(--text); stroke-width: 2; }
+
+.dbg-stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 12px 0 0; }
+.dbg-stats dt { color: var(--muted); }
+.dbg-stats dd { margin: 0; }
+.dbg-msg { min-height: 1.5em; margin: 8px 0 0; color: var(--text); }
+.dbg-msg.is-error { color: var(--error); }
+
+#narrator:empty { display: none; }
+#narrator { flex-basis: 100%; }
+
+#credits { max-width: 1100px; margin: 24px auto 0; color: var(--muted); font-size: 0.85rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
