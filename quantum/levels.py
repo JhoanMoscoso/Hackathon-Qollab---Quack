@@ -7,6 +7,7 @@ import json
 from copy import deepcopy
 
 LEVEL_IDS = ("level1", "level2", "level3")
+THEMES = ("lab", "prison", "core")  # art sets of the client (assets/themes/*.json); purely visual
 
 
 def integer(value, lower=0, upper=None):
@@ -19,6 +20,8 @@ def validate_level(level: dict) -> dict:
         raise ValueError("Expected level schema_version 2")
     if level.get("id") not in LEVEL_IDS or type(level.get("num_qubits")) is not int or level["num_qubits"] != 2:
         raise ValueError("MVP levels require a known id and exactly two qubits")
+    if "theme" in level and level["theme"] not in THEMES:
+        raise ValueError("theme must be one of " + ", ".join(THEMES))
     stages = level.get("stages")
     if not isinstance(stages, list) or not stages:
         raise ValueError("A level needs at least one stage")
@@ -159,7 +162,14 @@ def validate_level(level: dict) -> dict:
             expected_qubit = 0 if gate == "cx" else 1 if owner == "bob" else 0
             if type(terminal.get("qubit")) is not int or terminal["qubit"] != expected_qubit:
                 raise ValueError("Terminal qubit does not match its owner")
-            if check_cell(terminal.get("cell")) != tid:
+            placement = terminal.get("placement", "map")
+            if placement not in {"map", "hud"}:
+                raise ValueError("Terminal placement must be map or hud")
+            if placement == "hud":
+                if (owner not in {"alice", "bob"} or gate == "cx"
+                        or "cell" in terminal or "target_cell" in terminal):
+                    raise ValueError("HUD terminals must be owned single-qubit gates without map cells")
+            elif check_cell(terminal.get("cell")) != tid:
                 raise ValueError("Terminal cell must reference its id in legend")
             if gate == "cx":
                 if type(terminal.get("target")) is not int or terminal["target"] != 1:
@@ -200,7 +210,8 @@ SCENERY_LABELS = {"wall", "floor", "region_separator"}
 def _check_decorations(decorations, grid, legend):
     """Purely visual layer: never read by the engine, but it must not hide gameplay cells.
 
-    Each item is {"sprite": name, "cell": [row, col] (top-left), "footprint": [w, h] in tiles}.
+    Each item is {"sprite": name, "cell": [row, col] (top-left), "footprint": [w, h] in tiles, "solid": bool (optional)}.
+    `solid` only matters to the client (it blocks movement over the footprint); the engine never reads it.
     Covered cells may only be plain scenery; wall cells are allowed solely for `wall_*` sprites.
     """
     if not isinstance(decorations, list):
@@ -217,6 +228,8 @@ def _check_decorations(decorations, grid, legend):
         if (not isinstance(footprint, list) or len(footprint) != 2
                 or not all(integer(n, lower=1) for n in footprint)):
             raise ValueError("Decoration footprint must be [w, h] positive integers")
+        if "solid" in deco and type(deco["solid"]) is not bool:
+            raise ValueError("Decoration solid must be a boolean")
         row, col = cell
         width, height = footprint
         if row + height > len(grid) or col + width > len(grid[0]):
@@ -248,11 +261,35 @@ def read_level(level_id: str) -> dict:
     return validate_level(data)
 
 
-def audio_payload() -> dict:
-    """Optional soundtrack, represented by JSON-compatible base64 rather than a proxy."""
-    with open("audio/soundtrack.ogg", "rb") as handle:
-        data = handle.read(2 * 1024 * 1024 + 1)
-    if len(data) > 2 * 1024 * 1024:
-        raise ValueError("Soundtrack exceeds the 2 MB asset limit")
+AUDIO_TRACKS = ("menu", "level1", "level2", "level3")
+AUDIO_MAX_BYTES = 2 * 1024 * 1024
+
+
+class InvalidTrack(ValueError):
+    code = "INVALID_TRACK"
+
+
+def audio_payload(track: str = "menu") -> dict:
+    """Background track as JSON-compatible base64 (no proxies). Fixed track -> file map.
+
+    Separate literal open() calls are intentional: Qollab's file access relies on literal paths.
+    Each level has its own track (level3 = The Core).
+    """
+    if not isinstance(track, str) or track not in AUDIO_TRACKS:
+        raise InvalidTrack(f"Unknown audio track; expected one of {', '.join(AUDIO_TRACKS)}")
+    if track == "menu":
+        with open("audio/fondo_inicio.ogg", "rb") as handle:
+            data = handle.read(AUDIO_MAX_BYTES + 1)
+    elif track == "level1":
+        with open("audio/fondo_1.ogg", "rb") as handle:
+            data = handle.read(AUDIO_MAX_BYTES + 1)
+    elif track == "level2":
+        with open("audio/fondo_2.ogg", "rb") as handle:
+            data = handle.read(AUDIO_MAX_BYTES + 1)
+    else:
+        with open("audio/fondo_3.ogg", "rb") as handle:
+            data = handle.read(AUDIO_MAX_BYTES + 1)
+    if len(data) > AUDIO_MAX_BYTES:
+        raise ValueError("Audio track exceeds the 2 MB asset limit")
     return {"mime": "audio/ogg", "encoding": "base64",
             "data": base64.b64encode(data).decode("ascii")}

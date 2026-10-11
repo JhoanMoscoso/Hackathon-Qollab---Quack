@@ -8,7 +8,7 @@ import {
   stageComplete, objectiveFailed, hazardCheck, sensorsUnderPlayers,
 } from '../js/entities.js';
 import * as entities from '../js/entities.js';
-import { view, worldOf, place, pos, l1snap, objSnap } from './helpers.mjs';
+import { view, worldOf, place, pos, l1snap, objSnap, smallView } from './helpers.mjs';
 
 const w1 = () => worldOf(1);
 
@@ -36,20 +36,20 @@ test('classes expose their fields', () => {
 test('createWorld builds level1 entities from the parsed grid', () => {
   const w = w1();
   assert.deepEqual(pos(w, 'alice'), [2, 2]);
-  assert.deepEqual(pos(w, 'bob'), [17, 2]);
+  assert.deepEqual(pos(w, 'bob'), [12, 2]);
   assert.equal(w.players.alice.qubit, 0);
   assert.equal(w.players.bob.qubit, 1);
   assert.equal(w.doors.length, 2);
   assert.equal(w.sensors.length, 2);
   assert.deepEqual(w.terminals.map((t) => [t.id, t.gate, t.owner, t.x, t.y, t.qubit, t.target]), [
     ['alice_h', 'h', 'alice', 2, 5, 0, undefined],
-    ['bob_cx', 'cx', 'bob', 16, 5, 0, 1], // Bob's own terminal: a CX without target_cell is not co-op
+    ['bob_cx', 'cx', 'bob', 11, 5, 0, 1], // Bob's own terminal: a CX without target_cell is not co-op
   ]);
   assert.equal(w.cnot, null);
   assert.equal(w.exits.length, 2);
   const door = w.doors.find((d) => d.name === 'door_B');
   assert.deepEqual([door.x, door.y, door.qubit, door.openOn, door.lethal, door.blocking, door.type],
-    [18, 8, 1, undefined, false, true, 'validated_exit']);
+    [13, 6, 1, undefined, false, true, 'validated_exit']);
 });
 
 test('walls and bounds block', () => {
@@ -58,7 +58,7 @@ test('walls and bounds block', () => {
   assert.deepEqual(stepPlayer(w, 'alice', -1, 0, l1snap()), [{ type: 'blocked', reason: 'wall' }]);
   assert.deepEqual(stepPlayer(w, 'alice', 0, -1, l1snap()), [{ type: 'blocked', reason: 'wall' }]);
   assert.deepEqual(pos(w, 'alice'), [1, 1]);
-  place(w, 'alice', 8, 3);
+  place(w, 'alice', 6, 3);
   assert.equal(stepPlayer(w, 'alice', 1, 0, l1snap())[0].type, 'blocked'); // centre wall
   place(w, 'alice', 0, 0);
   assert.equal(stepPlayer(w, 'alice', -1, 0, l1snap())[0].type, 'blocked'); // out of bounds
@@ -71,12 +71,12 @@ test('normal move emits move event and mutates position', () => {
   assert.deepEqual(pos(w, 'alice'), [3, 2]);
 });
 
-test('level1 central wall is solid: neither player gets to columns 9 or 10 (no co-op CX niche in L1)', () => {
+test('level1 central wall is solid: neither player gets to the divider column 7 (no co-op CX niche in L1)', () => {
   const w = w1();
-  for (let y = 1; y <= 10; y++) {
-    place(w, 'alice', 8, y);
+  for (let y = 1; y <= 7; y++) {
+    place(w, 'alice', 6, y);
     assert.deepEqual(stepPlayer(w, 'alice', 1, 0, l1snap()), [{ type: 'blocked', reason: 'wall' }], `alice row ${y}`);
-    place(w, 'bob', 11, y);
+    place(w, 'bob', 8, y);
     assert.deepEqual(stepPlayer(w, 'bob', -1, 0, l1snap()), [{ type: 'blocked', reason: 'wall' }], `bob row ${y}`);
   }
 });
@@ -86,9 +86,9 @@ test('each player walks from the spawn to their own terminal', () => {
   const walk = (id, dx, dy, steps) => { for (let i = 0; i < steps; i++) stepPlayer(w, id, dx, dy, l1snap()); };
   walk('alice', 0, 1, 3); // (2,2) -> alice_h (2,5)
   assert.deepEqual(pos(w, 'alice'), [2, 5]);
-  walk('bob', 0, 1, 3);   // (17,2) -> (17,5)
-  walk('bob', -1, 0, 1);  // -> bob_cx (16,5)
-  assert.deepEqual(pos(w, 'bob'), [16, 5]);
+  walk('bob', 0, 1, 3);   // (12,2) -> (12,5)
+  walk('bob', -1, 0, 1);  // -> bob_cx (11,5)
+  assert.deepEqual(pos(w, 'bob'), [11, 5]);
 });
 
 test('players block each other', () => {
@@ -100,7 +100,7 @@ test('players block each other', () => {
 
 test('validated_exit door follows snap.door_states, never snap.objects or open_on', () => {
   const w = w1();
-  place(w, 'alice', 1, 7);
+  place(w, 'alice', 1, 5);
   const door = w.doors.find((d) => d.name === 'door_A');
   // Initial: door_states closed even though objects.door_A is the quantum value "0".
   assert.equal(l1snap().objects.door_A, '0');
@@ -113,10 +113,10 @@ test('validated_exit door follows snap.door_states, never snap.objects or open_o
   assert.equal(door.isOpen(l1snap('measured_q0_0')), false);
   // Both measured and equal: open, whatever the measured value (00 or 11).
   for (const name of ['complete_0', 'complete_1']) {
-    place(w, 'alice', 1, 7);
+    place(w, 'alice', 1, 5);
     assert.equal(door.isOpen(l1snap(name)), true, name);
-    assert.deepEqual(stepPlayer(w, 'alice', 0, 1, l1snap(name)), [{ type: 'move', player: 'alice', x: 1, y: 8 }], name);
-    assert.deepEqual(stepPlayer(w, 'alice', 0, 1, l1snap(name)), [{ type: 'move', player: 'alice', x: 1, y: 9 }], name);
+    assert.deepEqual(stepPlayer(w, 'alice', 0, 1, l1snap(name)), [{ type: 'move', player: 'alice', x: 1, y: 6 }], name);
+    assert.deepEqual(stepPlayer(w, 'alice', 0, 1, l1snap(name)), [{ type: 'move', player: 'alice', x: 1, y: 7 }], name);
   }
   // A snapshot without door_states never opens a validated_exit door (no open_on fallback).
   const bare = { objects: { door_A: '0', door_B: '0' }, measured: [null, null] };
@@ -124,9 +124,9 @@ test('validated_exit door follows snap.door_states, never snap.objects or open_o
   assert.equal(door.state(bare), 'closed');
 });
 
-test('bob side mirror: door_B at (18,8) opens from door_states', () => {
+test('bob side mirror: door_B at (13,6) opens from door_states', () => {
   const w = w1();
-  place(w, 'bob', 18, 7);
+  place(w, 'bob', 13, 5);
   assert.equal(stepPlayer(w, 'bob', 0, 1, l1snap('validated'))[0].reason, 'closed');
   assert.equal(stepPlayer(w, 'bob', 0, 1, l1snap('complete_1'))[0].type, 'move');
 });
@@ -137,14 +137,14 @@ test('blocking:false door never blocks and never kills (indicator only)', () => 
   v.objects.door_A.lethal = true; // even a lethal flag must not matter for an indicator
   const w = createWorld(parseLevel(v));
   for (const name of ['initial', 'validated', 'complete_0']) {
-    place(w, 'alice', 1, 7);
-    assert.deepEqual(stepPlayer(w, 'alice', 0, 1, l1snap(name)), [{ type: 'move', player: 'alice', x: 1, y: 8 }], name);
+    place(w, 'alice', 1, 5);
+    assert.deepEqual(stepPlayer(w, 'alice', 0, 1, l1snap(name)), [{ type: 'move', player: 'alice', x: 1, y: 6 }], name);
   }
   // standing on it while closed is not a hazard either
   assert.deepEqual(hazardCheck(w, l1snap('initial')), []);
   assert.deepEqual(hazardCheck(w, l1snap('validated')), []);
   // the other (blocking) door still blocks
-  place(w, 'bob', 18, 7);
+  place(w, 'bob', 13, 5);
   assert.equal(stepPlayer(w, 'bob', 0, 1, l1snap('validated'))[0].reason, 'closed');
 });
 
@@ -152,17 +152,17 @@ test('level3 lethal qubit-bound doors: super blocks, closed kills, open passes',
   const w = worldOf(3);
   const bridge = w.doors.find((d) => d.name === 'bridge_A');
   const laser = w.doors.find((d) => d.name === 'laser_B');
-  assert.deepEqual([bridge.x, bridge.y, bridge.qubit, bridge.openOn], [7, 3, 0, 1]);
-  place(w, 'alice', 6, 3);
-  assert.deepEqual(stepPlayer(w, 'alice', 1, 0, objSnap({ bridge_A: 'super', laser_B: '0' })), [{ type: 'blocked', reason: 'superposition' }]);
-  assert.deepEqual(stepPlayer(w, 'alice', 1, 0, objSnap({ bridge_A: '0', laser_B: '0' })), [
-    { type: 'move', player: 'alice', x: 7, y: 3 }, { type: 'death', cause: 'bridge_A' },
+  assert.deepEqual([bridge.x, bridge.y, bridge.qubit, bridge.openOn], [1, 8, 0, 1]);
+  place(w, 'alice', 1, 7);
+  assert.deepEqual(stepPlayer(w, 'alice', 0, 1, objSnap({ bridge_A: 'super', laser_B: '0' })), [{ type: 'blocked', reason: 'superposition' }]);
+  assert.deepEqual(stepPlayer(w, 'alice', 0, 1, objSnap({ bridge_A: '0', laser_B: '0' })), [
+    { type: 'move', player: 'alice', x: 1, y: 8 }, { type: 'death', cause: 'bridge_A' },
   ]);
-  place(w, 'alice', 6, 3);
-  assert.equal(stepPlayer(w, 'alice', 1, 0, objSnap({ bridge_A: '1', laser_B: '0' })).length, 1);
-  place(w, 'bob', 12, 3);
-  assert.deepEqual(stepPlayer(w, 'bob', -1, 0, objSnap({ bridge_A: '1', laser_B: '1' })), [
-    { type: 'move', player: 'bob', x: 11, y: 3 }, { type: 'death', cause: 'laser_B' },
+  place(w, 'alice', 1, 7);
+  assert.equal(stepPlayer(w, 'alice', 0, 1, objSnap({ bridge_A: '1', laser_B: '0' })).length, 1);
+  place(w, 'bob', 18, 7);
+  assert.deepEqual(stepPlayer(w, 'bob', 0, 1, objSnap({ bridge_A: '1', laser_B: '1' })), [
+    { type: 'move', player: 'bob', x: 18, y: 8 }, { type: 'death', cause: 'laser_B' },
   ]);
   assert.deepEqual(hazardCheck(w, objSnap({ bridge_A: '1', laser_B: '1' })), [{ type: 'death', cause: 'laser_B' }]);
   assert.deepEqual(hazardCheck(w, objSnap({ bridge_A: '1', laser_B: 'super' })), [{ type: 'death', cause: 'collapse' }]);
@@ -177,7 +177,7 @@ test('sensor emits measure only while its qubit is unmeasured and measurement is
   place(w, 'alice', 2, 4);
   const ev2 = stepPlayer(w, 'alice', 1, 0, l1snap('measured_q0_0'));
   assert.deepEqual(ev2, [{ type: 'move', player: 'alice', x: 3, y: 4 }]);
-  place(w, 'bob', 12, 4); // sensor_q1 at (13,4)
+  place(w, 'bob', 9, 4); // sensor_q1 at (10,4)
   assert.deepEqual(stepPlayer(w, 'bob', 1, 0, l1snap('validated'))[1], { type: 'measure', qubit: 1 });
 });
 
@@ -226,13 +226,13 @@ test('gate terminal: event payload carries terminalId, actor and target -1; inte
 test("Bob's own CX terminal (no target_cell) is a normal owner terminal: q0 -> q1, actor is bob", () => {
   const w = w1();
   const t = w.terminals.find((x) => x.id === 'bob_cx');
-  place(w, 'bob', 16, 5);
+  place(w, 'bob', 11, 5);
   assert.deepEqual(interact(w, 'bob', l1snap('built_h')), [
     { type: 'gate', gate: 'cx', qubit: 0, target: 1, terminalId: 'bob_cx', actor: 'bob', terminal: t },
   ]);
   // No partner needed, and only the owner can use it.
-  place(w, 'alice', 16, 5);
-  place(w, 'bob', 17, 2);
+  place(w, 'alice', 11, 5);
+  place(w, 'bob', 12, 2);
   assert.deepEqual(interact(w, 'alice', l1snap()), [{ type: 'info', reason: 'wrong_owner' }]);
   assert.equal(w.cnot, null);
 });
@@ -244,7 +244,7 @@ test('terminal: wrong owner, exhausted (local fallback without terminal_uses_lef
   place(w, 'alice', 2, 2);
   assert.deepEqual(interact(w, 'bob', l1snap()), [{ type: 'info', reason: 'wrong_owner' }]);
   place(w, 'alice', 2, 5);
-  place(w, 'bob', 17, 2);
+  place(w, 'bob', 12, 2);
   consumeTerminal(t);
   const noUses = { ...l1snap() };
   delete noUses.terminal_uses_left;
@@ -252,7 +252,7 @@ test('terminal: wrong owner, exhausted (local fallback without terminal_uses_lef
   resetWorld(w);
   assert.equal(t.usesLeft, 1);
   assert.deepEqual(pos(w, 'alice'), [2, 2]);
-  assert.deepEqual(pos(w, 'bob'), [17, 2]);
+  assert.deepEqual(pos(w, 'bob'), [12, 2]);
 });
 
 test('terminal uses come from snap.terminal_uses_left when present (engine is the source of truth)', () => {
@@ -287,9 +287,9 @@ test('interact on an empty cell does nothing', () => {
 test('level3 cnot needs alice on the control and bob on the target (payload carries terminalId; actor is the terminal owner "shared")', () => {
   const w = worldOf(3);
   const snap = objSnap({}, { terminal_uses_left: { shared_cx: 1 } });
-  place(w, 'alice', 4, 3);
+  place(w, 'alice', ...w.cnot.control);
   assert.deepEqual(interact(w, 'alice', snap), [{ type: 'info', reason: 'cnot_needs_both' }]);
-  place(w, 'bob', 15, 3);
+  place(w, 'bob', ...w.cnot.target);
   // The engine matches `actor` against the terminal owner ('shared'), whoever presses E.
   const expected = [{
     type: 'cnot', gate: 'cx', qubit: 0, target: 1, terminalId: 'shared_cx', actor: 'shared', terminal: w.cnot,
@@ -303,8 +303,8 @@ test('level3 cnot needs alice on the control and bob on the target (payload carr
 
 test('cnot uses: engine terminal_uses_left wins, local counter is the fallback', () => {
   const w = worldOf(3);
-  place(w, 'alice', 4, 3);
-  place(w, 'bob', 15, 3);
+  place(w, 'alice', ...w.cnot.control);
+  place(w, 'bob', ...w.cnot.target);
   assert.deepEqual(interact(w, 'alice', objSnap({}, { terminal_uses_left: { shared_cx: 0 } })), [{ type: 'info', reason: 'terminal_used' }]);
   consumeTerminal(w.cnot);
   assert.deepEqual(interact(w, 'alice', objSnap({})), [{ type: 'info', reason: 'terminal_used' }]);
@@ -313,10 +313,10 @@ test('cnot uses: engine terminal_uses_left wins, local counter is the fallback',
   assert.equal(w.cnot.usesLeft, 1);
 });
 
-test('level3 cnot sits inside the rooms: control (4,3), target (15,3)', () => {
+test('level3 cnot plates flank the central wall: control (8,4), target (11,4)', () => {
   const w = worldOf(3);
-  place(w, 'alice', 4, 3);
-  place(w, 'bob', 15, 3);
+  place(w, 'alice', ...w.cnot.control);
+  place(w, 'bob', ...w.cnot.target);
   const ev = interact(w, 'alice', objSnap({}, { terminal_uses_left: { shared_cx: 1 } }));
   assert.deepEqual(ev.map((e) => [e.type, e.gate, e.terminalId, e.actor]), [['cnot', 'cx', 'shared_cx', 'shared']]);
 });
@@ -335,20 +335,20 @@ test('stageComplete: objective ready AND alice on exit_A AND bob on exit_B', () 
   const w = w1();
   for (const name of ['complete_0', 'complete_1']) {
     const ready = l1snap(name);
-    place(w, 'alice', 1, 9);
-    place(w, 'bob', 18, 9);
+    place(w, 'alice', 1, 7);
+    place(w, 'bob', 13, 7);
     assert.equal(stageComplete(w, ready), true, name);
-    place(w, 'bob', 18, 8);
+    place(w, 'bob', 13, 6);
     assert.equal(stageComplete(w, ready), false); // bob not on exit
-    place(w, 'bob', 18, 9);
-    place(w, 'alice', 1, 8);
+    place(w, 'bob', 13, 7);
+    place(w, 'alice', 1, 6);
     assert.equal(stageComplete(w, ready), false); // alice not on exit
-    place(w, 'alice', 18, 9); // alice on bob's exit does not count
-    place(w, 'bob', 1, 9);
+    place(w, 'alice', 13, 7); // alice on bob's exit does not count
+    place(w, 'bob', 1, 7);
     assert.equal(stageComplete(w, ready), false);
   }
-  place(w, 'alice', 1, 9);
-  place(w, 'bob', 18, 9);
+  place(w, 'alice', 1, 7);
+  place(w, 'bob', 13, 7);
   assert.equal(stageComplete(w, l1snap('validated')), false);
   assert.equal(stageComplete(w, l1snap('measured_q0_0')), false);
   assert.equal(stageComplete(w, l1snap('validated', { measured: [0, 1], objective: { status: 'failed' } })), false);
@@ -363,7 +363,7 @@ test('stageComplete: objective ready AND alice on exit_A AND bob on exit_B', () 
 test('stageComplete is false for a world without two exits', () => {
   const w = w1();
   w.exits = w.exits.slice(0, 1);
-  place(w, 'alice', 1, 9);
+  place(w, 'alice', 1, 7);
   assert.equal(stageComplete(w, l1snap('complete_0')), false);
 });
 
@@ -382,7 +382,7 @@ test('bit-based checkWin is gone', () => {
 
 test('hazardCheck: non-lethal door never kills', () => {
   const w = w1();
-  place(w, 'alice', 1, 8);
+  place(w, 'alice', 1, 6);
   assert.deepEqual(hazardCheck(w, l1snap('validated')), []);
 });
 
@@ -390,7 +390,7 @@ test('sensorsUnderPlayers: players already on an unmeasured sensor produce measu
   const w = w1();
   place(w, 'alice', 3, 4); // sensor_q0
   assert.deepEqual(sensorsUnderPlayers(w, l1snap('validated')), [{ type: 'measure', qubit: 0 }]);
-  place(w, 'bob', 13, 4); // sensor_q1
+  place(w, 'bob', 10, 4); // sensor_q1
   assert.deepEqual(sensorsUnderPlayers(w, l1snap('validated')), [
     { type: 'measure', qubit: 0 }, { type: 'measure', qubit: 1 },
   ]);
@@ -406,43 +406,59 @@ test('sensorsUnderPlayers: nothing for measured qubits, players off their sensor
   assert.deepEqual(sensorsUnderPlayers(w, l1snap('validated')), []);
 });
 
-test('decorations never block: every covered floor cell can be walked onto and across', () => {
-  const w = w1();
-  assert.ok(w.grid.decorations.length > 0);
-  let checked = 0;
-  for (const d of w.grid.decorations) {
-    for (let y = d.cell[1]; y < d.cell[1] + d.footprint[1]; y++) {
-      for (let x = d.cell[0]; x < d.cell[0] + d.footprint[0]; x++) {
-        if (w.grid.tiles[y][x] === '#') continue; // wall lights sit on walls, which stay walls
-        const id = x < 9 ? 'alice' : 'bob';
-        const from = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]
-          .find(([fx, fy]) => w.grid.tiles[fy]?.[fx] === '.' && (fx < 9) === (x < 9));
-        assert.ok(from, `decoration cell ${x},${y} has a floor neighbour`);
-        place(w, id, ...from);
-        const ev = stepPlayer(w, id, x - from[0], y - from[1], l1snap());
-        assert.deepEqual(ev, [{ type: 'move', player: id, x, y }], `${d.sprite} at ${x},${y}`);
-        checked += 1;
-      }
-    }
-  }
-  assert.equal(checked, 14, 'tanks 4 + plants 2 + mats 4 + grates 4 floor cells (wall lights excluded)');
-});
-
-test('walking a straight line across the mat, grate row and tank column raises no blocked events', () => {
-  const w = w1();
-  const snap = l1snap();
-  place(w, 'alice', 3, 6);
-  for (const x of [4, 5, 6]) assert.equal(stepPlayer(w, 'alice', 1, 0, snap)[0].type, 'move', `mat row x=${x}`);
-  place(w, 'alice', 7, 3);
-  for (const y of [2, 1]) assert.equal(stepPlayer(w, 'alice', 0, -1, snap)[0].type, 'move', `tank column y=${y}`); // tank_a (7,1)-(7,2)
-  place(w, 'bob', 16, 6);
-  for (const x of [15, 14, 13]) assert.equal(stepPlayer(w, 'bob', -1, 0, snap)[0].type, 'move', `bob mat row x=${x}`);
-  place(w, 'bob', 12, 3);
-  for (const y of [2, 1]) assert.equal(stepPlayer(w, 'bob', 0, -1, snap)[0].type, 'move', `tank_b column y=${y}`);
-});
-
 test('wall-light decorations do not make the top wall walkable', () => {
   const w = w1();
   place(w, 'alice', 5, 1);
   assert.deepEqual(stepPlayer(w, 'alice', 0, -1, l1snap()), [{ type: 'blocked', reason: 'wall' }]);
+});
+
+// ---------- variable map size: divider columns and solid decorations ----------
+const smallWorld = (extra = {}) => createWorld(parseLevel(smallView(extra)));
+const SNAP = { objects: {}, measured: [null, null], terminal_uses_left: {} };
+
+test('room rule follows the grid divider: a gap in the 15x9 divider lets each player in, but not past it', () => {
+  const v = smallView();
+  v.map[4] = v.map[4].slice(0, 7) + '.' + v.map[4].slice(8); // gap at (7, 4)
+  const w = createWorld(parseLevel(v));
+  place(w, 'alice', 6, 4);
+  assert.equal(stepPlayer(w, 'alice', 1, 0, SNAP)[0].type, 'move');
+  assert.deepEqual(stepPlayer(w, 'alice', 1, 0, SNAP), [{ type: 'blocked', reason: 'wall' }], 'alice may not cross to 8');
+  place(w, 'alice', 1, 1);
+  place(w, 'bob', 8, 4);
+  assert.equal(stepPlayer(w, 'bob', -1, 0, SNAP)[0].type, 'move');
+  assert.deepEqual(stepPlayer(w, 'bob', -1, 0, SNAP), [{ type: 'blocked', reason: 'wall' }], 'bob may not cross to 6');
+});
+
+test('solid decorations block movement over their whole footprint, floor decals do not', () => {
+  const w = smallWorld({ decorations: [
+    { sprite: 'server_rack_a', cell: [2, 2], footprint: [1, 2], solid: true },
+    { sprite: 'floor_grate', cell: [4, 4], footprint: [2, 1] },
+  ] });
+  assert.equal(w.solidCells.size, 2);
+  place(w, 'alice', 1, 2);
+  assert.deepEqual(stepPlayer(w, 'alice', 1, 0, SNAP), [{ type: 'blocked', reason: 'solid' }]);
+  place(w, 'alice', 1, 3);
+  assert.deepEqual(stepPlayer(w, 'alice', 1, 0, SNAP), [{ type: 'blocked', reason: 'solid' }], 'second row of the footprint');
+  place(w, 'alice', 3, 4);
+  assert.equal(stepPlayer(w, 'alice', 1, 0, SNAP)[0].type, 'move', 'grate is walk-over');
+  assert.equal(stepPlayer(w, 'alice', 1, 0, SNAP)[0].type, 'move');
+});
+
+test('solid defaults to the theme registry; an explicit solid:false wins; unknown sprites are walk-over', () => {
+  const w = smallWorld({ decorations: [
+    { sprite: 'locker', cell: [2, 2], footprint: [1, 2] },                    // registry: solid
+    { sprite: 'locker', cell: [4, 2], footprint: [1, 2], solid: false },       // explicit override
+    { sprite: 'no_such_sprite', cell: [2, 5], footprint: [1, 1] },
+    { sprite: 'plant', cell: [4, 5], footprint: [1, 1] },                      // lab registry: solid plant
+  ] });
+  assert.deepEqual([...w.solidCells].sort(), ['2,2', '2,3', '4,5']);
+  const prison = smallWorld({ theme: 'prison', decorations: [{ sprite: 'bunk_a', cell: [2, 2], footprint: [1, 2] }, { sprite: 'locker', cell: [4, 2], footprint: [1, 2] }] });
+  assert.equal(prison.solidCells.size, 4, 'prison registry knows bunk_a and locker');
+});
+
+test('solid decorations never block a player standing next to another entity: occupied/solid are distinct reasons', () => {
+  const w = smallWorld({ decorations: [{ sprite: 'plant', cell: [3, 2], footprint: [1, 1], solid: true }] });
+  place(w, 'alice', 2, 2);
+  place(w, 'bob', 8, 2);
+  assert.equal(stepPlayer(w, 'alice', 1, 0, SNAP)[0].reason, 'solid');
 });

@@ -3,7 +3,7 @@
 // to dev/engine_bridge.js in dev/index.html). Engine calls happen on events only, never per frame.
 import * as engine from 'quantum.engine';
 import { createStateMachine, STATES } from './js/state.js';
-import { parseLevel } from './js/grid.js';
+import { parseLevel, CELL } from './js/grid.js';
 import { stageView } from './js/level_adapter.js';
 import {
   createWorld, resetWorld, stepPlayer, interact, consumeTerminal, syncTerminalUses, stageComplete, objectiveFailed, hazardCheck,
@@ -12,9 +12,12 @@ import {
 import { createInput } from './js/input.js';
 import { createRenderer } from './js/render.js';
 import { fitCanvas, debounce } from './js/layout.js';
-import { createDebugger, describeChange, hintFor } from './js/debugger.js';
+import { createDebugger, describeChange, hintFor, FEED_FORWARD_HINTS } from './js/debugger.js';
+import { renderTitle } from './js/title.js';
+import { renderGateGuide } from './js/gate_guide.js';
 import { loadSprites } from './js/sprite_loader.js';
 import { withTimeout } from './js/async_util.js';
+import { createAudio, trackForLevel, gateSfx } from './js/audio.js';
 
 /* global backend -- Qollab provides the quantum backend as a global; dev/index.html defines a stub. */
 const DEFAULT_LEVEL = 'level1';
@@ -24,15 +27,6 @@ const PRECOMPUTE_SHOTS = 200;
 const PRECOMPUTE_TIMEOUT_MS = 45_000; // how long boot waits for the one backend submission before opening the menu
 const SLOW_BACKEND_NOTE = 'Quantum backend is slow — using local sampling until it finishes.';
 const $ = (id) => document.getElementById(id);
-const FEED_FORWARD_HINTS = {
-  prepare_bob: 'Bob: apply X to q1, then measure it.',
-  measure_bob: 'Bob: measure q1 on the sensor.',
-  send_bit: 'Bob: send the measured bit to Alice (B).',
-  receive_bit: 'Alice: receive Bob’s classical bit (V).',
-  correct_alice: 'Alice: apply X only for bit 0; use Keep (I) only for bit 1 (I).',
-  measure_alice: 'Alice: measure q0 on the sensor.',
-  complete: 'Both qubits are measured. Reach the open exits.',
-};
 const NOTES = {
   wrong_owner: 'This terminal belongs to the other player.',
   terminal_used: 'This terminal is used up.',
@@ -43,20 +37,31 @@ const NOTES = {
 };
 
 const canvas = $('canvas');
-const dbg = createDebugger({ state: $('debugger-state'), circuit: $('debugger-circuit') }, $('a11y-live'));
+// Music data comes from the engine on demand (first time a track is needed). Deliberately NOT through call():
+// an audio failure is only logged and must never show up as a game/debugger error.
+const audio = createAudio({
+  fetchTrack: async (track) => JSON.parse(await engine.load_audio.callPromising(track)),
+});
+const dbg = createDebugger({ state: $('debugger-body'), circuit: $('debugger-circuit') }, $('a11y-live'));
 const reduceBox = $('reduce-motion');
 reduceBox.checked = !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+document.body.classList.toggle('reduce-motion', reduceBox.checked); // CSS stops the title animation with it
 const renderer = createRenderer(canvas, { reduceMotion: reduceBox.checked });
 
 // ---------- canvas fit ----------
-// The board cell (CSS decides its size) holds the canvas, which CSS cannot size to "largest 5:3 that fits" alone.
-// The CSS size follows the cell at once; the backing store (an integer multiple of 640x384, matched to
+// The board cell (CSS decides its size) holds the canvas, which CSS cannot size to "largest box of the map's aspect
+// ratio that fits" alone. Maps have any size up to 20x12 cells, so the logical canvas (grid.width x grid.height
+// cells of 32 px) comes from the current grid; --board-w/--board-h feed the narrow layout's aspect-ratio.
+// The CSS size follows the cell at once; the backing store (an integer multiple of the logical size, matched to
 // size x devicePixelRatio) is debounced because resizing a canvas clears it. render.draw() keeps logical coords.
 const board = canvas.parentElement;
 function fitCanvasToBoard(applyScale) {
+  const logicalW = (grid?.width ?? 20) * CELL, logicalH = (grid?.height ?? 12) * CELL;
+  board.style.setProperty('--board-w', logicalW);
+  board.style.setProperty('--board-h', logicalH);
   const w = board.clientWidth, h = board.clientHeight;
   if (!w || !h) return; // game screen hidden
-  const fitted = fitCanvas({ availW: w, availH: h, dpr: globalThis.devicePixelRatio || 1 });
+  const fitted = fitCanvas({ availW: w, availH: h, dpr: globalThis.devicePixelRatio || 1, logicalW, logicalH });
   canvas.style.width = `${fitted.cssW}px`;
   canvas.style.height = `${fitted.cssH}px`;
   if (applyScale) renderer.setScale(fitted.scale);
@@ -71,7 +76,6 @@ let input = null, mode = '1p', overlay = null, busy = false;
 let lastError = null;   // last engine error (as a short hint), shown in the debugger until the next successful call or move
 let overlayMessage;     // optional second line of the dead/win overlay
 const levelCache = new Map(); // level id -> parsed engine level (load_level runs once per id)
-let bootSampling = null;      // summary of the one boot-time precompute, shown by the debugger
 let precomputeStarted = false;
 let epoch = 0;          // bumped on every state change and level reset; async results from an older epoch are dropped
 let deathTimer = null;
@@ -105,12 +109,35 @@ function refreshProtocolConsole() {
     $('receive-bit').disabled = busy || protocol.phase !== 'receive_bit';
     $('keep-identity').disabled = busy || protocol.phase !== 'correct_alice' || protocol.required_correction !== 'i';
   }
+  const core = $('core-console');
+  const isCore = level?.id === 'level3';
+  core.hidden = !isCore;
+  if (isCore) {
+    const stage = level.stages?.[snap?.stage_index ?? 0];
+    const terminals = new Map((stage?.terminals ?? []).filter((t) => t.placement === 'hud').map((t) => [t.id, t]));
+    const controls = [
+      ['core-h', 'alice_h', 0], ['core-z', 'alice_z', 0], ['core-x', 'bob_x', 1],
+    ];
+    for (const [buttonId, id, qubit] of controls) {
+      const terminal = terminals.get(id);
+      const left = snap?.terminal_uses_left?.[id] ?? terminal?.uses ?? 0;
+      $(buttonId).disabled = busy || !terminal || left <= 0 || snap?.gates_left <= 0
+        || snap?.measured?.[qubit] != null || snap?.objective?.status !== 'pending';
+    }
+  }
 }
+
+/** Raw level stage of the current snapshot (goal text, gate guide). */
+const currentStage = () => level?.stages?.[snap?.stage_index ?? 0] ?? null;
+
+const HUD_HINT_BASE = 'Move: WASD / Arrows · E / Enter: use terminal · Space: run circuit · Tab: switch (1P) · R: reset stage · M: mute · Esc: menu';
+const HUD_HINT_EXTRA = { level2: ' · B: send bit · V: receive bit · I: keep (identity)', level3: ' · H / Z / X: gates from the HUD' };
+const setHudHint = (levelId) => { $('hud-hint').textContent = HUD_HINT_BASE + (HUD_HINT_EXTRA[levelId] ?? ''); };
 
 const refresh = (note = null, prev = null) => {
   if (world && snap) syncTerminalUses(world, snap); // engine is the source of truth for terminal uses
   refreshProtocolConsole();
-  dbg.update(snap, { lastMeasure, note, error: lastError, prev, sampling: bootSampling });
+  dbg.update(snap, { lastMeasure, note, error: lastError, prev, stage: currentStage() });
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -127,18 +154,15 @@ async function precomputeOnce() {
   if (precomputeStarted) return;
   precomputeStarted = true;
   if (typeof backend === 'undefined' || !backend) return;
-  const out = await call('precompute', backend, PRECOMPUTE_SHOTS);
-  const failure = lastError;
-  lastError = null;
-  bootSampling = out
-    ? { source: out.source, backend: out.backend, submitted_states: out.submitted_states, reason: out.reason }
-    : { source: 'statevector_fallback', backend: null, submitted_states: 0, reason: failure };
+  await call('precompute', backend, PRECOMPUTE_SHOTS);
+  lastError = null; // a failed submission is non-fatal: sampling stays local and nothing is shown
 }
 
 /** Flat stage view -> grid -> world for the snapshot's current stage. */
 function buildWorld() {
   grid = parseLevel(stageView(level, snap.stage_index ?? 0));
   world = createWorld(grid);
+  fitCanvasToBoard(true); // the next stage may have another map size
 }
 
 function showMenuNote(msg) {
@@ -165,10 +189,10 @@ const sm = createStateMachine({
     if (next !== 'dead') { clearTimeout(deathTimer); deathTimer = null; }
     for (const id of new Set(Object.values(SCREENS))) $(id).hidden = id !== SCREENS[next];
     overlay = next === 'dead' || next === 'win' ? next : null;
-    if (next === 'menu') { input?.dispose(); input = null; }
+    if (next === 'menu') { input?.dispose(); input = null; audio.playMusic('menu'); }
     if (next === 'level') showMenuError(null);
     if (SCREENS[next] === 'game') fitCanvasToBoard(true);
-    if ($('click-to-play').hidden) focusTarget().focus();
+    focusTarget().focus();
   },
 });
 
@@ -199,6 +223,9 @@ async function startGame(chosen) {
     overlayMessage = undefined;
     newInput();
     sm.setState(STATES.LEVEL);
+    setHudHint(id);
+    renderGateGuide($('gate-guide'), currentStage());
+    audio.playMusic(trackForLevel(id));
     refresh(`${lvl.title ?? id} started.`);
   } finally { busy = false; refreshProtocolConsole(); }
 }
@@ -226,6 +253,7 @@ async function restartStage() {
 }
 
 function die() {
+  audio.play('death');
   overlayMessage = 'Restarting stage...';
   sm.setState(STATES.DEAD);
   refresh('Wavefunction collapsed. Restarting the stage.');
@@ -261,14 +289,17 @@ async function handleComplete(ep) {
   if (done < (snap.stage_count ?? 1) - 1) {
     const s = await call('advance_stage');
     if (ep !== epoch || !s) return;
+    audio.play('win');
     epoch++; pending = []; // the old world is gone: drop everything still in flight
     snap = s; lastMeasure = null;
     try { buildWorld(); } catch (e) { sm.setState(STATES.MENU); showMenuError(e.message); return; }
     newInput();
+    renderGateGuide($('gate-guide'), currentStage());
     refresh(`Stage ${done + 1} complete. Stage ${done + 2}: ${level.stages?.[snap.stage_index]?.title ?? ''}`);
     return;
   }
   overlayMessage = undefined;
+  audio.play('win');
   sm.setState(STATES.WIN);
   refresh('Level complete. Press Enter to return to the menu.');
 }
@@ -287,6 +318,9 @@ async function runIntent(intent, ep) {
     snap = result.snapshot ?? result;
     refresh(intent.action === 'send_bit' ? 'Bob sent the classical bit.' : intent.action === 'receive_bit' ? 'Alice received the classical bit.' : 'Alice kept the identity correction.', prev);
     events = sensorsUnderPlayers(world, snap);
+  } else if (intent.type === 'core-gate') {
+    const { gate, qubit, terminalId, actor } = intent;
+    events = [{ type: 'gate', gate, qubit, target: -1, terminalId, actor, terminal: null }];
   } else
   if (intent.type === 'run') { // RUN CIRCUIT: the engine validates the prepared state; errors show in the debugger
     const prev = snap;
@@ -307,15 +341,18 @@ async function runIntent(intent, ep) {
   let before = null; // snapshot before the first state change of this intent (for the bar highlight)
   for (const ev of events) {
     if (ev.type === 'death') return die();
-    if (ev.type === 'blocked') note = NOTES[ev.reason] ?? null;
+    if (ev.type === 'move') { if (!events.some((e) => e.type === 'death')) audio.play('step', { key: ev.player }); }
+    else if (ev.type === 'blocked') note = NOTES[ev.reason] ?? null;
     else if (ev.type === 'info') note = ev.reason === 'measurement_locked' && snap.feed_forward
       ? (FEED_FORWARD_HINTS[snap.feed_forward.phase] ?? FEED_FORWARD_HINTS.prepare_bob)
       : NOTES[ev.reason];
     else if (ev.type === 'measure') {
       const prev = snap;
+      audio.play('measure');
       const r = await call('measure', ev.qubit);
       if (ep !== epoch) return; // Esc / restart while the call was in flight: drop the result
       if (r) {
+        audio.play(`collapse${r.outcome ? 1 : 0}`, { delay: 0.12 });
         snap = r.snapshot; lastMeasure = { qubit: r.qubit, outcome: r.outcome };
         note = describeChange(prev, snap, { type: 'measure', qubit: r.qubit, outcome: r.outcome });
         before ??= prev;
@@ -325,7 +362,9 @@ async function runIntent(intent, ep) {
       const s = await call('apply_gate', ev.gate, ev.qubit, ev.target, ev.terminalId, ev.actor);
       if (ep !== epoch) return;
       if (s) {
-        snap = s; consumeTerminal(ev.terminal);
+        audio.play(gateSfx(ev.gate));
+        snap = s;
+        if (ev.terminal) consumeTerminal(ev.terminal);
         note = describeChange(prev, s, { gate: ev.gate, qubit: ev.qubit, actor: ev.actor });
         before ??= prev;
         for (const sensorEvent of sensorsUnderPlayers(world, snap)) {
@@ -343,6 +382,13 @@ async function runIntent(intent, ep) {
 function queueProtocol(action) {
   if (sm.state !== 'level' || !snap?.feed_forward || pending.length >= PENDING_CAP) return;
   const intent = { type: 'protocol', action };
+  if (busy) pending.push(intent);
+  else runIntents([intent]);
+}
+
+function queueCoreGate(gate, qubit, terminalId, actor) {
+  if (sm.state !== 'level' || level?.id !== 'level3' || pending.length >= PENDING_CAP) return;
+  const intent = { type: 'core-gate', gate, qubit, terminalId, actor };
   if (busy) pending.push(intent);
   else runIntents([intent]);
 }
@@ -382,24 +428,51 @@ window.addEventListener('keydown', (e) => {
   const s = sm.state;
   // Esc works even while an engine call is in flight: the epoch guard drops its late result.
   if (e.code === 'Escape' && (s === 'level' || s === 'dead' || s === 'win')) sm.setState(STATES.MENU);
+  else if (e.code === 'KeyM' && s !== 'menu' && s !== 'loading') toggleSound();
   else if (s === 'level' && snap?.feed_forward && ['KeyB', 'KeyV', 'KeyI'].includes(e.code)) {
     e.preventDefault();
     queueProtocol({ KeyB: 'send_bit', KeyV: 'receive_bit', KeyI: 'identity' }[e.code]);
+  }
+  else if (s === 'level' && level?.id === 'level3' && ['KeyH', 'KeyZ', 'KeyX'].includes(e.code)) {
+    e.preventDefault();
+    const action = { KeyH: ['h', 0, 'alice_h', 'alice'], KeyZ: ['z', 0, 'alice_z', 'alice'], KeyX: ['x', 1, 'bob_x', 'bob'] }[e.code];
+    queueCoreGate(...action);
   }
   else if (busy) return;
   else if (s === 'level' && e.code === 'KeyR') restartStage();
   else if (s === 'win' && (e.code === 'Enter' || e.code === 'Space')) { e.preventDefault(); sm.setState(STATES.MENU); }
 });
-$('start-1p').addEventListener('click', () => startGame('1p'));
-$('start-2p').addEventListener('click', () => startGame('2p'));
+// Browsers only allow audio after a user gesture: the first click or key press unlocks the AudioContext.
+for (const type of ['pointerdown', 'keydown']) window.addEventListener(type, () => audio.unlock(), { capture: true });
+const soundBox = $('sound');
+const applySound = () => audio.setMuted(!soundBox.checked);
+function toggleSound() { // M key (in a level): works while the menu checkbox is hidden, and keeps both in sync
+  soundBox.checked = !soundBox.checked;
+  applySound();
+  $('a11y-live').textContent = soundBox.checked ? 'Sound on.' : 'Sound off.';
+}
+soundBox.addEventListener('change', applySound);
+$('start-1p').addEventListener('click', () => { audio.play('click'); startGame('1p'); });
+$('start-2p').addEventListener('click', () => { audio.play('click'); startGame('2p'); });
+for (const radio of document.querySelectorAll('input[name="level"]')) radio.addEventListener('change', () => audio.play('click'));
+
 $('send-bit').addEventListener('click', () => queueProtocol('send_bit'));
 $('receive-bit').addEventListener('click', () => queueProtocol('receive_bit'));
 $('keep-identity').addEventListener('click', () => queueProtocol('identity'));
-reduceBox.addEventListener('change', () => renderer.setReduceMotion(reduceBox.checked));
-$('click-to-play').addEventListener('click', (e) => {
-  e.currentTarget.hidden = true;
-  focusTarget().focus();
+$('core-h').addEventListener('click', () => queueCoreGate('h', 0, 'alice_h', 'alice'));
+$('core-z').addEventListener('click', () => queueCoreGate('z', 0, 'alice_z', 'alice'));
+$('core-x').addEventListener('click', () => queueCoreGate('x', 1, 'bob_x', 'bob'));
+reduceBox.addEventListener('change', () => {
+  renderer.setReduceMotion(reduceBox.checked);
+  document.body.classList.toggle('reduce-motion', reduceBox.checked);
 });
+$('reset-btn').addEventListener('click', () => {
+  canvas.focus(); // Space (run circuit) on a focused button would press it again
+  if (sm.state === 'level' && !busy) restartStage();
+});
+
+renderTitle($('loading-title'));
+renderTitle($('menu-title'));
 
 (async () => {
   requestAnimationFrame(frame);

@@ -321,8 +321,9 @@ def snapshot():
     return _engine.snapshot()
 
 
-def load_audio():
+def load_audio(track="menu"):
+    """track: "menu" | "level1" | "level2" | "level3" (one track per level)."""
     try:
-        return encode(audio_payload())
+        return encode(audio_payload(track))
     except (OSError, ValueError) as error:
         return encode(error_payload(error, "AUDIO_UNAVAILABLE"))

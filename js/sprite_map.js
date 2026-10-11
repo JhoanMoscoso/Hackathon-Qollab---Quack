@@ -1,35 +1,9 @@
-// Versioned sprite registry (v1): which atlas cells the game uses. Pure data + helpers, no DOM.
-// Atlas: assets/spritesheet.png, 256x192, 16x16 cells, (col,row) zero-based. Cells below were chosen
-// after visual review of Fernanda's sheet (docs/07-guia-integracion-assets.md); change them here only.
-// Characters live in separate strips (assets/characters/*_walk_4dir.png): 128x64 = 8 frames x 4 rows.
+// Character strips and prop placement helpers. Pure data + helpers, no DOM.
+// Characters live in separate strips (assets/characters/*_walk_4dir.png): 128x64 = 8 frames x 4 rows of 16 px.
+// The themed tile and prop art is described by js/theme.js (registries in assets/themes/*.json).
 
 export const TILE = 16;
-export const SHEET_W = 256;
-export const SHEET_H = 192;
 export const STRIP_FRAMES = 8;
-
-const CELLS = {
-  floor: [0, 11],
-  wall: [1, 4],
-  wall_center: [2, 4], // glass: the quantum divider
-  door_0: [1, 2],      // green
-  door_1: [2, 2],      // red
-  door_super: [3, 2],  // violet
-  sensor_idle: [0, 3],
-  sensor_0: [1, 3],
-  sensor_1: [2, 3],
-  terminal_h: [0, 8],
-  terminal_x: [1, 8],
-  terminal_z: [2, 8],
-  cnot_control: [3, 8],
-  cnot_target: [5, 8],
-  exit: [4, 11],
-};
-
-/** name -> { x, y, w, h } in atlas pixels. */
-export const ATLAS = Object.fromEntries(
-  Object.entries(CELLS).map(([name, [col, row]]) => [name, { x: col * TILE, y: row * TILE, w: TILE, h: TILE }]),
-);
 
 /** Row of the character strips for each facing (verified visually). */
 export const DIRS = Object.freeze({ down: 0, left: 1, right: 2, up: 3 });
@@ -59,24 +33,15 @@ export function walkFrameIndex(t, walking, reduceMotion) {
   return Math.floor((t * WALK_FPS) / 1000) % 2;
 }
 
-// ---- lab decorations (Fernanda's V2 atlas embedded whole, rects hand-mapped in assets/lab_decorations.json) ----
-// Frames come from sprites.js (DECOR_FRAMES): name -> { x, y, w, h, footprint } in V2 SOURCE pixels, drawn at 2x.
-
-/** Decoration sprites are drawn at this integer scale (nearest neighbour): 16 px art -> 32 px tile. */
-export const DECOR_SCALE = 2;
-
-const FLOOR_DETAILS = new Set(['grate', 'mat']);
-
-/** Floor details (floor_* names, mats, grates) are drawn before the other decorations. */
-export const isFloorDetail = (name) => FLOOR_DETAILS.has(name) || String(name).startsWith('floor_');
+// ---- decorations (theme props, drawn 1:1 from the 32 px-per-cell prop sheets) ----
 
 /**
  * Screen [x, y] (integers) of a decoration sprite: bottom-centre aligned inside its footprint.
  * @param {[number, number]} cell top-left tile [x, y]
  * @param {[number, number]} footprint [w, h] in tiles
- * @param {{ w: number, h: number }} frame sprite size in SOURCE px (scaled by DECOR_SCALE on screen)
+ * @param {{ w: number, h: number }} frame sprite size in px (drawn 1:1)
  */
 export function decorSpritePos([cx, cy], [fw, fh], { w, h }) {
-  const px = TILE * 2; // 32 screen px per tile
-  return [cx * px + Math.floor((fw * px - w * DECOR_SCALE) / 2), cy * px + fh * px - h * DECOR_SCALE];
+  const px = 32;
+  return [cx * px + Math.floor((fw * px - w) / 2), cy * px + fh * px - h];
 }

@@ -34,16 +34,16 @@ test('terminal cells are converted from [row, col] to [x, y]', () => {
 test("Bob's L1 cx terminal has no target_cell: cell is converted, qubit/target/activation are kept", () => {
   const v = stageView(loadLevel(1), 0);
   const cx = v.terminals.find((t) => t.id === 'bob_cx');
-  assert.deepEqual(cx.cell, [16, 5]);
+  assert.deepEqual(cx.cell, [11, 5]);
   assert.equal('target_cell' in cx, false);
   assert.deepEqual([cx.gate, cx.owner, cx.qubit, cx.target, cx.uses, cx.activation], ['cx', 'bob', 0, 1, 1, 'owner']);
-  assert.equal(v.map[5][16], 'C');
+  assert.equal(v.map[5][11], 'C');
 });
 
 test('level3 co-op cx terminal converts cell and target_cell, keeps target and id', () => {
   const cx = stageView(loadLevel(3), 0).terminals.find((t) => t.id === 'shared_cx');
-  assert.deepEqual(cx.cell, [4, 3]);
-  assert.deepEqual(cx.target_cell, [15, 3]);
+  assert.deepEqual(cx.cell, [8, 4]);
+  assert.deepEqual(cx.target_cell, [11, 4]);
   assert.deepEqual([cx.gate, cx.owner, cx.qubit, cx.target, cx.uses], ['cx', 'shared', 0, 1, 1]);
 });
 
@@ -52,12 +52,12 @@ test('validated_exit doors keep type, qubit and unlock_when', () => {
   assert.deepEqual(v.objects.door_A, { type: 'validated_exit', qubit: 0, blocking: true, unlock_when: 'objective_ready' });
 });
 
-test('level3 converts every terminal, including unlimited-use ones kept as null', () => {
+test('level3 keeps HUD terminals without cells and converts shared CX plates', () => {
   const l3 = stageView(loadLevel(3), 0);
-  assert.deepEqual(l3.terminals.map((t) => [t.id, ...t.cell]), [
-    ['alice_h', 3, 1], ['alice_z', 4, 2], ['bob_x', 15, 1], ['shared_cx', 4, 3],
+  assert.deepEqual(l3.terminals.map((t) => [t.id, ...(t.cell ?? [])]), [
+    ['alice_h'], ['alice_z'], ['bob_x'], ['shared_cx', 8, 4],
   ]);
-  assert.deepEqual(l3.terminals.find((t) => t.id === 'shared_cx').target_cell, [15, 3]);
+  assert.deepEqual(l3.terminals.find((t) => t.id === 'shared_cx').target_cell, [11, 4]);
   const l2b = stageView(loadLevel(2), 0);
   assert.equal(l2b.stageId, 'bell_block');
   assert.equal(l2b.terminals[0].uses, 1);
@@ -96,15 +96,26 @@ test('decorations convert cell [row, col] -> [x, y] and keep sprite + footprint 
   const level = loadLevel(1);
   const v = stageView(level, 0);
   assert.equal(v.decorations.length, level.stages[0].decorations.length);
-  const tank = v.decorations.find((d) => d.sprite === 'tank_a');
-  assert.deepEqual(tank, { sprite: 'tank_a', cell: [7, 1], footprint: [1, 2] }); // v2 [row 1, col 7]
-  const mat = v.decorations.find((d) => d.sprite === 'floor_mat' && d.cell[0] === 14);
-  assert.deepEqual(mat, { sprite: 'floor_mat', cell: [14, 6], footprint: [2, 1] }); // v2 [row 6, col 14]
+  const fridge = v.decorations.find((d) => d.sprite === 'dilution_fridge_a');
+  assert.deepEqual(fridge, { sprite: 'dilution_fridge_a', cell: [5, 1], footprint: [2, 2] }); // v2 [row 1, col 5]
+  const grate = v.decorations.find((d) => d.sprite === 'floor_grate' && d.cell[0] === 11);
+  assert.deepEqual(grate, { sprite: 'floor_grate', cell: [11, 3], footprint: [2, 1] }); // v2 [row 3, col 11]
   // the input is not mutated
-  assert.deepEqual(level.stages[0].decorations.find((d) => d.sprite === 'tank_a').cell, [1, 7]);
+  assert.deepEqual(level.stages[0].decorations.find((d) => d.sprite === 'dilution_fridge_a').cell, [1, 5]);
 });
 
 test('a stage without decorations yields an empty list', () => {
-  assert.deepEqual(stageView(loadLevel(2), 0).decorations, []);
-  assert.deepEqual(stageView(loadLevel(3), 0).decorations, []);
+  const level = structuredClone(loadLevel(2));
+  delete level.stages[0].decorations;
+  assert.deepEqual(stageView(level, 0).decorations, []);
+});
+
+test('theme passes through to the stage view, defaulting to lab; decoration solid flags and [row, col] cells survive', () => {
+  const level = structuredClone(loadLevel(1));
+  assert.equal(stageView(level, 0).theme, 'lab');
+  level.theme = 'prison';
+  level.stages[0].decorations = [{ sprite: 'locker', cell: [2, 7], footprint: [1, 2], solid: true }];
+  const v = stageView(level, 0);
+  assert.equal(v.theme, 'prison');
+  assert.deepEqual(v.decorations, [{ sprite: 'locker', cell: [7, 2], footprint: [1, 2], solid: true }]);
 });

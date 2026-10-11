@@ -1,11 +1,11 @@
 // Smoke tests for js/render.js with a stub 2D context (no browser). Run: node --test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRenderer, drawSprite, COLORS, ON_ONE } from '../js/render.js';
-import { worldOf, l1snap, objSnap, view as levelView } from './helpers.mjs';
+import { createRenderer, logicalSize, COLORS, ON_ONE } from '../js/render.js';
+import { worldOf, l1snap, objSnap, view as levelView, smallView } from './helpers.mjs';
 import { parseLevel } from '../js/grid.js';
 import { createWorld } from '../js/entities.js';
-import { DECOR_FRAMES } from '../js/sprites.js';
+import { THEMES } from '../js/sprites.js';
 
 function stubCtx() {
   const calls = [];
@@ -31,23 +31,6 @@ function jointWorld() {
 const l3snap = (a = '0', b = '0') => objSnap({ bridge_A: a, laser_B: b });
 const snap = (a, b) => ({ objects: { door_A: a, door_B: b }, measured: [null, 1] });
 const view = (extra = {}) => ({ mode: '1p', active: 'alice', overlay: null, ...extra });
-
-test('drawSprite returns false without a spritesheet and draws nothing', () => {
-  const ctx = stubCtx();
-  assert.equal(globalThis.SPRITES, undefined);
-  assert.equal(drawSprite(ctx, 'wall', 0, 0), false);
-  assert.equal(ctx.calls.length, 0);
-});
-
-test('drawSprite draws when the sheet has the frame', () => {
-  const ctx = stubCtx();
-  globalThis.SPRITES = { image: {}, frames: { wall: { x: 0, y: 0, w: 16, h: 16 } } };
-  try {
-    assert.equal(drawSprite(ctx, 'wall', 32, 64), true);
-    assert.equal(drawSprite(ctx, 'unknown', 0, 0), false);
-    assert.equal(ctx.calls.filter((c) => c[0] === 'drawImage').length, 1);
-  } finally { delete globalThis.SPRITES; }
-});
 
 test('renderer disables smoothing and draws every door state without throwing', () => {
   const ctx = stubCtx();
@@ -174,244 +157,201 @@ test('joint lock: closed ("1") draws a lock; blocking:false doors are indicators
   assert.ok(indicator.one, 'indicator still shows the 1 glyph');
 });
 
-// ---------- sprite path (fake SPRITES, recording context) ----------
-// Records every call with the globalAlpha in force at that moment.
+// ---------- sprite path (fake SPRITES from the real theme registries, recording context) ----------
+// Records every call with the globalAlpha and fillStyle in force at that moment.
 function recCtx() {
   const calls = [];
-  const state = { globalAlpha: 1 };
+  const state = { globalAlpha: 1, fillStyle: '#000' };
   const stack = [];
   const ctx = new Proxy(state, {
     get: (t, k) => {
       if (k in t) return t[k];
-      if (k === 'save') return () => stack.push(t.globalAlpha);
-      if (k === 'restore') return () => { t.globalAlpha = stack.pop() ?? 1; };
-      return (...a) => { calls.push({ name: k, alpha: t.globalAlpha, args: a }); };
+      if (k === 'save') return () => stack.push([t.globalAlpha, t.fillStyle]);
+      if (k === 'restore') return () => { [t.globalAlpha, t.fillStyle] = stack.pop() ?? [1, '#000']; };
+      return (...a) => { calls.push({ name: k, alpha: t.globalAlpha, style: t.fillStyle, args: a }); };
     },
     set: (t, k, v) => { t[k] = v; return true; },
   });
   return { ctx, calls };
 }
 
-const SHEET = { id: 'sheet' };
 const ALICE = { id: 'alice-strip' };
 const BOB = { id: 'bob-strip' };
-const FRAMES = {
-  floor: { x: 0, y: 176, w: 16, h: 16 }, wall: { x: 16, y: 64, w: 16, h: 16 }, wall_center: { x: 32, y: 64, w: 16, h: 16 },
-  door_0: { x: 16, y: 32, w: 16, h: 16 }, door_1: { x: 32, y: 32, w: 16, h: 16 }, door_super: { x: 48, y: 32, w: 16, h: 16 },
-  sensor_idle: { x: 0, y: 48, w: 16, h: 16 }, sensor_0: { x: 16, y: 48, w: 16, h: 16 }, sensor_1: { x: 32, y: 48, w: 16, h: 16 },
-  terminal_h: { x: 0, y: 128, w: 16, h: 16 }, terminal_x: { x: 16, y: 128, w: 16, h: 16 }, terminal_z: { x: 32, y: 128, w: 16, h: 16 },
-  cnot_control: { x: 48, y: 128, w: 16, h: 16 }, cnot_target: { x: 80, y: 128, w: 16, h: 16 }, exit: { x: 64, y: 176, w: 16, h: 16 },
-};
-const withSprites = (fn) => {
-  globalThis.SPRITES = { image: SHEET, frames: FRAMES, characters: { alice: ALICE, bob: BOB } };
+const IMG = { lab: { tiles: { id: 'lab-tiles' }, props: { id: 'lab-props' } }, prison: { tiles: { id: 'prison-tiles' }, props: { id: 'prison-props' } } };
+const fakeTheme = (name) => ({
+  tilesImage: IMG[name].tiles, propsImage: IMG[name].props, tiles: THEMES[name].tiles, props: THEMES[name].props, wallTopColor: THEMES[name].wallTopColor,
+});
+const withSprites = (fn, { themes = ['lab', 'prison'] } = {}) => {
+  globalThis.SPRITES = { characters: { alice: ALICE, bob: BOB }, themes: Object.fromEntries(themes.map((n) => [n, fakeTheme(n)])) };
   try { return fn(); } finally { delete globalThis.SPRITES; }
 };
-const rect = (f) => [f.x, f.y, f.w, f.h];
-/** drawImage calls of `image` landing exactly on the 32 px cell (cx, cy), in draw order. */
+/** Source rect of a named tile of a theme's tiles sheet. */
+const tile = (name, theme = 'lab') => { const [c, r] = THEMES[theme].tiles[name]; return [c * 32, r * 32, 32, 32]; };
+/** drawImage calls landing exactly on the 32 px cell (cx, cy), in draw order, optionally from one image. */
 const imagesAt = (calls, cx, cy, image) => calls
   .filter((c) => c.name === 'drawImage' && (!image || c.args[0] === image) && c.args[5] === cx * 32 && c.args[6] === cy * 32);
-const lastAt = (calls, cx, cy, image = SHEET) => imagesAt(calls, cx, cy, image).at(-1);
+const lastAt = (calls, cx, cy, image = IMG.lab.tiles) => imagesAt(calls, cx, cy, image).at(-1);
+const srcOf = (c) => c.args.slice(1, 5);
+const drawn = (world, s, v = view(), t = 0, opts) => {
+  const { ctx, calls } = recCtx();
+  createRenderer(canvasWith(ctx), opts).draw(world, s, v, t);
+  return calls;
+};
 
-test('sprites: tiles are drawn 32x32 on integer positions, floor under everything, smoothing off', () => withSprites(() => {
+test('sprites: every cell gets a floor tile first, tiles are 32x32 on integers, smoothing stays off', () => withSprites(() => {
   const { ctx, calls } = recCtx();
   const world = jointWorld();
   createRenderer(canvasWith(ctx)).draw(world, snap('0', '0'), view(), 0);
   assert.equal(ctx.imageSmoothingEnabled, false);
-  const imgs = calls.filter((c) => c.name === 'drawImage');
-  assert.ok(imgs.length > 0);
-  for (const c of imgs) {
-    assert.equal(c.args[7], 32);
-    assert.equal(c.args[8], 32);
+  const tiles = calls.filter((c) => c.name === 'drawImage' && c.args[0] === IMG.lab.tiles);
+  assert.ok(tiles.length > 0);
+  for (const c of tiles) {
+    assert.deepEqual([c.args[3], c.args[4], c.args[7], c.args[8]], [32, 32, 32, 32]);
     assert.ok(Number.isInteger(c.args[5]) && Number.isInteger(c.args[6]));
   }
-  // every cell gets a floor first; walls drawn after the floor on the same cell
-  assert.equal(imgs.filter((c) => c.args[0] === SHEET && c.args[1] === 0 && c.args[2] === 176).length, 20 * 12);
-  const atWall = imagesAt(calls, 0, 0, SHEET);
-  assert.deepEqual(atWall.map((c) => c.args.slice(1, 5)), [rect(FRAMES.floor), rect(FRAMES.wall)]);
-  const atCenter = imagesAt(calls, 9, 0, SHEET);
-  assert.deepEqual(atCenter.at(-1).args.slice(1, 5), rect(FRAMES.wall_center));
+  const floors = new Set(Object.keys(THEMES.lab.tiles).filter((n) => n.startsWith('floor_')).map((n) => tile(n).join()));
+  for (let y = 1; y < 8; y++) assert.ok(floors.has(srcOf(imagesAt(calls, 3, y)[0]).join()), `cell 3,${y} starts with a floor tile`);
 }));
 
-test('sprites: door_A uses door_0 (open, dimmed), door_1 (closed, full) and door_super (full)', () => withSprites(() => {
+test('sprites: wall faces come from the sheet, wall tops are a flat fill of the theme cap colour, the divider uses its own tiles', () => withSprites(() => {
+  const world = worldOf(1); // top row has floor below, outer columns have wall below
+  world.grid.decorations = []; // bare walls: the tile at a cell is the wall itself, not a wall-mounted prop
+  const { ctx, calls } = recCtx();
+  createRenderer(canvasWith(ctx)).draw(world, l1snap(), view(), 0);
+  const faceNames = ['wall_face_a', 'wall_face_b', 'wall_face_c', 'wall_face_pipe', 'wall_face_sign', 'wall_face_window'];
+  const faces = new Set(faceNames.map((n) => tile(n).join()));
+  assert.ok(faces.has(srcOf(lastAt(calls, 3, 0)).join()), 'top wall row shows a wall face');
+  const flat = calls.filter((c) => c.name === 'fillRect' && c.args[0] === 0 && c.args[1] === 32 && c.args[2] === 32);
+  assert.equal(flat.at(-1).style, THEMES.lab.wallTopColor, 'left outer wall, wall below: flat cap colour');
+  assert.equal(imagesAt(calls, 0, 1, IMG.lab.tiles).length, 1, 'only the floor was drawn under the flat wall top');
+  const divider = [tile('divider').join(), tile('divider_face').join()];
+  for (const x of world.grid.divider) assert.ok(divider.includes(srcOf(lastAt(calls, x, 4)).join()), `divider column ${x}`);
+}));
+
+test('sprites: a level of the prison theme draws from the prison sheets and cap colour', () => withSprites(() => {
+  const v = smallView({ theme: 'prison' });
+  const world = createWorld(parseLevel(v));
+  const calls = drawn(world, { objects: {}, measured: [null, null] });
+  assert.ok(calls.some((c) => c.name === 'drawImage' && c.args[0] === IMG.prison.tiles));
+  assert.ok(!calls.some((c) => c.name === 'drawImage' && c.args[0] === IMG.lab.tiles));
+  assert.ok(calls.some((c) => c.name === 'fillRect' && c.style === THEMES.prison.wallTopColor));
+}));
+
+test('sprites: legacy qubit doors use door_0 (open, dimmed), door_1 (closed) and a flickering super door, each with a text badge', () => withSprites(() => {
   const world = jointWorld();
-  const doorAt = [world.doors[0].x, world.doors[0].y];
-  const run = (state) => {
-    const { ctx, calls } = recCtx();
-    createRenderer(canvasWith(ctx)).draw(world, snap(state, '1'), view(), 0);
-    return lastAt(calls, ...doorAt);
-  };
-  const open = run('0');   // open_on 0 -> passable
-  assert.deepEqual(open.args.slice(1, 5), rect(FRAMES.door_0));
+  const [d] = world.doors;
+  const run = (state, t = 0, opts) => lastAt(drawn(world, snap(state, '1'), view(), t, opts), d.x, d.y);
+  const open = run('0');  // open_on 0 -> passable
+  assert.deepEqual(srcOf(open), tile('door_0'));
   assert.equal(open.alpha, 0.35);
   const closed = run('1');
-  assert.deepEqual(closed.args.slice(1, 5), rect(FRAMES.door_1));
+  assert.deepEqual(srcOf(closed), tile('door_1'));
   assert.equal(closed.alpha, 1);
-  const sup = run('super');
-  assert.deepEqual(sup.args.slice(1, 5), rect(FRAMES.door_super));
-  assert.equal(sup.alpha, 1);
+  assert.deepEqual(srcOf(run('super', 0)), tile('door_super_a'));
+  assert.deepEqual(srcOf(run('super', 250)), tile('door_super_b'));
+  assert.deepEqual(srcOf(run('super', 250, { reduceMotion: true })), tile('door_super_a'), 'reduced motion: static');
+  const badge = (state) => drawn(world, snap(state, '1'), view(), 0)
+    .find((c) => c.name === 'fillText' && c.args[0] === (state === 'super' ? '?' : state) && c.args[1] > d.x * 32 && c.args[1] < d.x * 32 + 32);
+  for (const st of ['0', '1', 'super']) assert.equal(badge(st)?.alpha, 1, `badge for ${st} at full alpha`);
 }));
 
-test('sprites: validated_exit doors are drawn from door_states (open door_0 dimmed / closed door_1 + padlock), never from objects', () => withSprites(() => {
+test('sprites: validated_exit doors follow door_states: padlocked hatch while closed (even if objects say super), doorway once open', () => withSprites(() => {
   const world = worldOf(1);
   const [a, b] = world.doors;
   const run = (name) => {
-    const { ctx, calls } = recCtx();
-    createRenderer(canvasWith(ctx)).draw(world, l1snap(name), view(), 0);
-    const arcs = calls.filter((c) => c.name === 'arc' && c.args[0] > a.x * 32 && c.args[0] < a.x * 32 + 32
-      && c.args[1] > a.y * 32 && c.args[1] < a.y * 32 + 32).length;
-    return { a: lastAt(calls, a.x, a.y), b: lastAt(calls, b.x, b.y), arcs };
+    const calls = drawn(world, l1snap(name));
+    const digits = calls.filter((c) => c.name === 'fillText' && /^[01?]$/.test(c.args[0])).length;
+    const inDoor = (c) => c.args[0] > a.x * 32 && c.args[0] < a.x * 32 + 32 && c.args[1] > a.y * 32 && c.args[1] < a.y * 32 + 32;
+    return { a: lastAt(calls, a.x, a.y), b: lastAt(calls, b.x, b.y), digits, arcs: calls.filter((c) => c.name === 'arc' && inDoor(c)).length };
   };
-  const initial = run('initial'); // objects say "0" (|00>), door_states say closed
-  assert.deepEqual(initial.a.args.slice(1, 5), rect(FRAMES.door_1));
-  assert.equal(initial.a.alpha, 1);
-  // A validated Bell pair has objects "super": still plain closed art, not the violet superposition door.
-  const validated = run('validated');
+  for (const name of ['initial', 'validated']) {
+    const r = run(name);
+    assert.deepEqual(srcOf(r.a), tile('door_locked'), name);
+    assert.deepEqual(srcOf(r.b), tile('door_locked'), name);
+    assert.equal(r.a.alpha, 1);
+  }
   assert.equal(l1snap('validated').objects.door_A, 'super');
-  assert.deepEqual(validated.a.args.slice(1, 5), rect(FRAMES.door_1));
-  assert.deepEqual(validated.b.args.slice(1, 5), rect(FRAMES.door_1));
-  assert.ok(validated.arcs > 0, 'padlock shackle while locked');
   for (const name of ['complete_0', 'complete_1']) {
-    const done = run(name);
-    assert.deepEqual(done.a.args.slice(1, 5), rect(FRAMES.door_0), name);
-    assert.equal(done.a.alpha, 0.35);
-    assert.deepEqual(done.b.args.slice(1, 5), rect(FRAMES.door_0), name);
-    assert.equal(done.arcs, 0, `${name}: no padlock once open`);
+    const r = run(name);
+    assert.deepEqual(srcOf(r.a), tile('door_open'), name);
+    assert.equal(r.a.alpha, 1, 'the open doorway art is already transparent: no ghosting');
+    assert.equal(r.digits, 0, 'engine doors carry their state in the art, no digit badges');
   }
+  assert.equal(run('validated').arcs, 0, 'no procedural padlock over the lock sprite');
 }));
 
-test('procedural doors: engine-driven closed draws a lock, open does not', () => {
-  const world = worldOf(1);
-  const arcs = (name) => {
-    const ctx = stubCtx();
-    createRenderer(canvasWith(ctx)).draw(world, l1snap(name), view(), 0);
-    const door = world.doors[0];
-    return ctx.calls.filter((c) => c[0] === 'arc' && c[1] > door.x * 32 && c[1] < door.x * 32 + 32
-      && c[2] > door.y * 32 && c[2] < door.y * 32 + 32).length;
-  };
-  assert.ok(arcs('validated') > 0);
-  assert.equal(arcs('complete_0'), 0);
-});
-
-test('sprites: door value badge glyph is drawn at full alpha with a readable fill', () => withSprites(() => {
-  const world = jointWorld();
-  const run = (state) => {
-    const { ctx, calls } = recCtx();
-    createRenderer(canvasWith(ctx)).draw(world, snap(state, '1'), view(), 0);
-    return calls.filter((c) => c.name === 'fillText');
-  };
-  const doorA = world.doors[0];
-  const open = run('0').find((c) => c.args[0] === '0' && c.args[1] > doorA.x * 32 && c.args[1] < doorA.x * 32 + 32);
-  assert.ok(open, 'glyph 0 near door_A');
-  assert.equal(open.alpha, 1);
-  assert.ok(run('1').some((c) => c.args[0] === '1' && c.args[1] > doorA.x * 32 && c.args[1] < doorA.x * 32 + 32));
-  assert.ok(run('super').some((c) => c.args[0] === '?'));
-}));
-
-test('sprites: badge contrast on the zero and one fills is at least 4.5:1', () => {
-  const lum = (hex) => {
-    const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
-      .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
-    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-  };
-  const ratio = (a, b) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
-  assert.ok(ratio(ON_ONE, COLORS.one) >= 4.5);
-  assert.ok(ratio(ON_ONE, COLORS.zero) >= 4.5);
-});
-
-test('sprites: super stripes overlay animates at 4 fps and freezes with reduceMotion', () => withSprites(() => {
-  const world = jointWorld();
-  const moves = (reduce, t) => {
-    const { ctx, calls } = recCtx();
-    createRenderer(canvasWith(ctx), { reduceMotion: reduce }).draw(world, snap('super', 'super'), view(), t);
-    return JSON.stringify(calls.filter((c) => c.name === 'moveTo').map((c) => c.args));
-  };
-  assert.equal(moves(true, 0), moves(true, 250));
-  assert.notEqual(moves(false, 0), moves(false, 250));
-}));
-
-test('sprites: lethal door keeps its dashed hazard border; non-lethal joint locks have none', () => withSprites(() => {
-  const dashes = (world, s) => {
-    const { ctx, calls } = recCtx();
-    createRenderer(canvasWith(ctx)).draw(world, s, view({ mode: '2p' }), 0); // 2P: no dashed active ring
-    return calls.filter((c) => c.name === 'setLineDash' && c.args[0].length === 2).length;
-  };
+test('sprites: lethal door keeps its dashed hazard border; a closed lethal door is the hazard door', () => withSprites(() => {
+  const dashes = (world, s) => drawn(world, s, view({ mode: '2p' })).filter((c) => c.name === 'setLineDash' && c.args[0].length === 2).length;
   assert.equal(dashes(jointWorld(), l1snap()), 0);
-  assert.equal(dashes(worldOf(3), l3snap()), 2); // bridge_A and laser_B
+  const l3 = worldOf(3);
+  assert.equal(dashes(l3, l3snap()), 2); // bridge_A and laser_B
+  const bridge = l3.doors.find((d) => d.name === 'bridge_A');
+  const calls = drawn(l3, l3snap('1', '0'));
+  assert.deepEqual(srcOf(lastAt(drawn(l3, l3snap('0', '0')), bridge.x, bridge.y)), tile('door_lethal'), 'bridge_A opens on 1: at 0 it is closed and deadly');
+  assert.deepEqual(srcOf(lastAt(calls, bridge.x, bridge.y)), tile('door_1'), 'open (value 1): normal state art, ghosted');
 }));
 
-test('level 1 and level 3 render with engine-shaped snapshots (joint locks, cx, sprites on and off)', () => {
-  for (const sprites of [false, true]) {
-    if (sprites) globalThis.SPRITES = { image: SHEET, frames: FRAMES };
-    try {
-      const { ctx } = recCtx();
-      const r = createRenderer(canvasWith(ctx));
-      r.draw(worldOf(1), l1snap(), view(), 0);
-      r.draw(worldOf(1), l1snap('complete_1'), view(), 0);
-      r.draw(jointWorld(), snap('0', '0'), view(), 0);
-      r.draw(worldOf(1), l1snap('complete_0'), view(), 0);
-      r.draw(worldOf(3), l3snap('super', '1'), view(), 0);
-    } finally { delete globalThis.SPRITES; }
-  }
-});
-
-test('sprites: sensors use idle until measured, then the measured value', () => withSprites(() => {
-  const world = jointWorld();
+test('sprites: sensors are locked until measurement is enabled, idle, then show the measured value; labels stay', () => withSprites(() => {
+  const world = worldOf(1);
   const [s0, s1] = world.sensors;
-  const draw = (measured) => {
-    const { ctx, calls } = recCtx();
-    createRenderer(canvasWith(ctx)).draw(world, { objects: {}, measured }, view(), 0);
-    return calls;
-  };
-  const a = draw([null, null]);
-  assert.deepEqual(lastAt(a, s0.x, s0.y).args.slice(1, 5), rect(FRAMES.sensor_idle));
-  assert.deepEqual(lastAt(a, s1.x, s1.y).args.slice(1, 5), rect(FRAMES.sensor_idle));
-  assert.ok(a.some((c) => c.name === 'fillText' && c.args[0] === 'Q0' && c.alpha === 1));
-  const b = draw([1, 0]);
-  assert.deepEqual(lastAt(b, s0.x, s0.y).args.slice(1, 5), rect(FRAMES.sensor_1));
-  assert.deepEqual(lastAt(b, s1.x, s1.y).args.slice(1, 5), rect(FRAMES.sensor_0));
-  assert.ok(b.some((c) => c.name === 'fillText' && c.args[0] === 'Q1' && c.alpha === 1));
+  const at = (calls, s) => srcOf(lastAt(calls, s.x, s.y));
+  const locked = drawn(world, l1snap('built'));
+  assert.deepEqual(at(locked, s0), tile('sensor_disabled'));
+  assert.deepEqual(at(locked, s1), tile('sensor_disabled'));
+  const idle = drawn(world, l1snap('validated'));
+  assert.deepEqual(at(idle, s0), tile('sensor_idle'));
+  assert.ok(idle.some((c) => c.name === 'fillText' && c.args[0] === 'Q0' && c.alpha === 1));
+  const done = drawn(world, l1snap('validated', { measured: [1, 0] }));
+  assert.deepEqual(at(done, s0), tile('sensor_1'));
+  assert.deepEqual(at(done, s1), tile('sensor_0'));
+  assert.ok(done.some((c) => c.name === 'fillText' && c.args[0] === 'Q1' && c.alpha === 1));
+  const lines = (calls) => calls.filter((c) => c.name === 'lineTo').length;
+  assert.ok(lines(done) > lines(idle), 'check mark once measured');
 }));
 
-test('sprites: terminals pick the gate sprite; used ones are dimmed but keep a full-alpha check mark', () => withSprites(() => {
-  const world = worldOf(3);
-  const [h, , x] = world.terminals; // alice_h, alice_z, bob_x
-  const draw = (used) => {
-    world.terminals[0].usesLeft = used ? 0 : 1;
-    const { ctx, calls } = recCtx();
-    createRenderer(canvasWith(ctx)).draw(world, l3snap(), view(), 0);
-    return calls;
-  };
-  const fresh = draw(false);
-  assert.deepEqual(lastAt(fresh, h.x, h.y).args.slice(1, 5), rect(FRAMES.terminal_h));
-  assert.deepEqual(lastAt(fresh, x.x, x.y).args.slice(1, 5), rect(FRAMES.terminal_x));
-  assert.equal(lastAt(fresh, h.x, h.y).alpha, 1);
-  const used = draw(true);
-  assert.equal(lastAt(used, h.x, h.y).alpha, 0.4);
+test('sprites: terminals pick the gate console; Bob\'s CX is the owner console; used ones are term_off with a check mark', () => withSprites(() => {
+  const l1 = worldOf(1);
+  const [h, cx] = l1.terminals; // alice_h, bob_cx
+  const fresh = drawn(l1, l1snap());
+  assert.deepEqual(srcOf(lastAt(fresh, h.x, h.y)), tile('term_h'));
+  assert.deepEqual(srcOf(lastAt(fresh, cx.x, cx.y)), tile('term_cx_owner'));
+  const l3 = worldOf(3);
+  const x = l3.terminals.find((t) => t.gate === 'x');
+  assert.deepEqual(srcOf(lastAt(drawn(l3, l3snap()), x.x, x.y)), tile('term_x'));
+  h.usesLeft = 0;
+  const used = drawn(l1, l1snap());
+  assert.deepEqual(srcOf(lastAt(used, h.x, h.y)), tile('term_off'));
+  assert.equal(lastAt(used, h.x, h.y).alpha, 1);
   const checks = (calls) => calls.filter((c) => c.name === 'lineTo' && c.alpha === 1).length;
   assert.ok(checks(used) > checks(fresh));
-  world.terminals[0].usesLeft = 1;
 }));
 
-test('sprites: cnot cells use control/target sprites and keep the cable', () => withSprites(() => {
-  // L3's CX cells are far apart; move the target next to the control so the cable is drawn too.
+test('sprites: cnot cells use control/target consoles and keep the cable when adjacent, CX labels when far', () => withSprites(() => {
   const v = structuredClone(levelView(3));
-  v.terminals.find((t) => t.target_cell).target_cell = [5, 3];
-  const world = createWorld(parseLevel(v));
-  const { ctx, calls } = recCtx();
-  createRenderer(canvasWith(ctx)).draw(world, l3snap(), view(), 0);
-  const [cx, cy] = world.cnot.control;
-  const [tx, ty] = world.cnot.target;
-  assert.deepEqual(lastAt(calls, cx, cy).args.slice(1, 5), rect(FRAMES.cnot_control));
-  assert.deepEqual(lastAt(calls, tx, ty).args.slice(1, 5), rect(FRAMES.cnot_target));
+  v.terminals.find((t) => t.target_cell).target_cell = [5, 5];
+  const near = createWorld(parseLevel(v));
+  const calls = drawn(near, l3snap());
+  const [cx, cy] = near.cnot.control;
+  const [tx, ty] = near.cnot.target;
+  assert.deepEqual(srcOf(lastAt(calls, cx, cy)), tile('term_cx_control'));
+  assert.deepEqual(srcOf(lastAt(calls, tx, ty)), tile('term_cx_target'));
   assert.ok(calls.some((c) => c.name === 'lineTo' && c.args[1] === cy * 32 + 16 && c.args[0] === tx * 32 + 16));
+  const far = drawn(worldOf(3), l3snap());
+  assert.equal(far.filter((c) => c.name === 'fillText' && c.args[0] === 'CX').length, 2);
+  near.cnot.usesLeft = 0;
+  assert.deepEqual(srcOf(lastAt(drawn(near, l3snap()), cx, cy)), tile('term_off'));
 }));
 
-test('sprites: exits use the exit sprite plus a player letter (identity not by color alone)', () => withSprites(() => {
-  const world = jointWorld();
-  const { ctx, calls } = recCtx();
-  createRenderer(canvasWith(ctx)).draw(world, snap('0', '0'), view(), 0);
-  for (const e of world.exits) {
-    assert.deepEqual(lastAt(calls, e.x, e.y).args.slice(1, 5), rect(FRAMES.exit));
+test('sprites: exits are a closed hatch, then the glowing doorway (a/b at 2 fps, a under reduced motion), plus the player letter', () => withSprites(() => {
+  const world = worldOf(1);
+  const [ea, eb] = world.exits;
+  const at = (s, t, opts) => srcOf(lastAt(drawn(world, s, view(), t, opts), ea.x, ea.y));
+  assert.deepEqual(at(l1snap('validated'), 0), tile('exit_closed'));
+  assert.deepEqual(at(l1snap('complete_0'), 0), tile('exit_open_a'));
+  assert.deepEqual(at(l1snap('complete_0'), 500), tile('exit_open_b'));
+  assert.deepEqual(at(l1snap('complete_0'), 500, { reduceMotion: true }), tile('exit_open_a'));
+  const calls = drawn(world, l1snap());
+  for (const e of [ea, eb]) {
     const letter = e.player === 'alice' ? 'A' : 'B';
     assert.ok(calls.some((c) => c.name === 'fillText' && c.args[0] === letter
       && c.args[1] > e.x * 32 && c.args[1] < e.x * 32 + 32 && c.args[2] > e.y * 32 && c.args[2] < e.y * 32 + 32), `${letter} on exit`);
@@ -458,19 +398,31 @@ test('sprites: reduceMotion keeps the walk frame at 0', () => withSprites(() => 
 
 test('sprites: players keep the A/B marker and the 1P active ring', () => withSprites(() => {
   const world = jointWorld();
-  const { ctx, calls } = recCtx();
-  createRenderer(canvasWith(ctx)).draw(world, snap('0', '0'), view({ active: 'alice' }), 0);
+  const calls = drawn(world, snap('0', '0'), view({ active: 'alice' }));
   const a = world.players.alice;
   assert.ok(calls.some((c) => c.name === 'fillText' && c.args[0] === 'A' && c.args[1] > a.x * 32 && c.args[1] < a.x * 32 + 32 && c.args[2] > a.y * 32 && c.args[2] < a.y * 32 + 32));
   assert.ok(calls.some((c) => c.name === 'setLineDash' && c.args[0].length === 2), 'active ring dashed');
 }));
 
-test('fallback: sheet without character strips still draws procedural players', () => {
-  globalThis.SPRITES = { image: SHEET, frames: FRAMES };
+test('fallback: characters without theme art still draw procedural tiles; a missing theme falls back per level', () => {
+  globalThis.SPRITES = { characters: { alice: ALICE, bob: BOB }, themes: {} };
   try {
     const world = jointWorld();
-    const { ctx, calls } = recCtx();
-    createRenderer(canvasWith(ctx)).draw(world, snap('0', '0'), view(), 0);
+    const calls = drawn(world, snap('0', '0'));
+    assert.ok(calls.some((c) => c.name === 'fillText' && c.args[1] !== undefined && c.args[0] === 'H'), 'procedural terminal letter');
+    assert.ok(calls.every((c) => c.name !== 'drawImage' || c.args[0] === ALICE || c.args[0] === BOB), 'only character strips are drawn');
+  } finally { delete globalThis.SPRITES; }
+  withSprites(() => {
+    const prison = createWorld(parseLevel(smallView({ theme: 'prison' })));
+    const calls = drawn(prison, { objects: {}, measured: [null, null] });
+    assert.ok(!calls.some((c) => c.name === 'drawImage' && c.args[0] === IMG.prison.tiles));
+  }, { themes: ['lab'] }); // prison sheets missing: procedural, no crash
+});
+
+test('fallback: sheet without character strips still draws procedural players', () => {
+  globalThis.SPRITES = { themes: { lab: fakeTheme('lab') } };
+  try {
+    const calls = drawn(jointWorld(), snap('0', '0'));
     assert.ok(calls.some((c) => c.name === 'fillText' && c.args[0] === 'A'));
     assert.ok(calls.some((c) => c.name === 'arc'));
   } finally { delete globalThis.SPRITES; }
@@ -478,148 +430,153 @@ test('fallback: sheet without character strips still draws procedural players', 
 
 test('fallback: without SPRITES nothing calls drawImage and procedural shapes are drawn', () => {
   assert.equal(globalThis.SPRITES, undefined);
-  const world = jointWorld();
-  const { ctx, calls } = recCtx();
-  createRenderer(canvasWith(ctx)).draw(world, snap('super', '1'), view(), 0);
+  const calls = drawn(jointWorld(), snap('super', '1'));
   assert.equal(calls.filter((c) => c.name === 'drawImage').length, 0);
   assert.ok(calls.some((c) => c.name === 'fillText' && c.args[0] === 'A'));
   assert.ok(calls.some((c) => c.name === 'fillText' && c.args[0] === '?'));
 });
 
-// ---------- lab decorations (separate atlas: SPRITES.decor) ----------
-const DECOR = { id: 'decor-atlas' };
-const DFRAMES = DECOR_FRAMES; // the real hand-mapped V2 registry (source pixels, drawn at 2x)
-const withDecor = (fn, { decor = { image: DECOR, frames: DFRAMES }, sheet = true } = {}) => {
-  globalThis.SPRITES = { ...(sheet ? { image: SHEET, frames: FRAMES, characters: { alice: ALICE, bob: BOB } } : {}), ...(decor ? { decor } : {}) };
-  try { return fn(); } finally { delete globalThis.SPRITES; }
-};
-const decorCalls = (calls) => calls.filter((c) => c.name === 'drawImage' && c.args[0] === DECOR);
-const drawL1 = (opts) => {
-  const { ctx, calls } = recCtx();
-  const world = worldOf(1);
-  createRenderer(canvasWith(ctx)).draw(world, opts?.snap ?? l1snap(), view(), 0);
-  return { ctx, calls, world };
-};
-
-test('decor: every level 1 decoration is drawn once from the V2 atlas, source pixels scaled 2x on integers', () => withDecor(() => {
-  const { ctx, calls, world } = drawL1();
-  assert.equal(ctx.imageSmoothingEnabled, false);
-  const drawn = decorCalls(calls);
-  assert.equal(drawn.length, world.grid.decorations.length);
-  assert.equal(drawn.length, 12);
-  for (const c of drawn) {
-    const [, sx, sy, sw, sh, dx, dy, dw, dh] = c.args;
-    assert.ok([dx, dy, dw, dh].every(Number.isInteger));
-    assert.deepEqual([dw, dh], [sw * 2, sh * 2], 'integer 2x, nearest neighbour');
-    assert.ok(Object.values(DFRAMES).some((f) => f.x === sx && f.y === sy && f.w === sw && f.h === sh));
+test('level 1 and level 3 render with engine-shaped snapshots (joint locks, cx, sprites on and off)', () => {
+  for (const sprites of [false, true]) {
+    const run = () => {
+      const r = createRenderer(canvasWith(recCtx().ctx));
+      r.draw(worldOf(1), l1snap(), view(), 0);
+      r.draw(worldOf(1), l1snap('complete_1'), view(), 0);
+      r.draw(jointWorld(), snap('0', '0'), view(), 0);
+      r.draw(worldOf(1), l1snap('complete_0'), view(), 0);
+      r.draw(worldOf(3), l3snap('super', '1'), view(), 0);
+      r.draw(worldOf(3), null, view(), 0);
+    };
+    if (sprites) withSprites(run); else run();
   }
-  const find = (name, cx, cy) => drawn.find((c) => c.args[1] === DFRAMES[name].x && c.args[2] === DFRAMES[name].y
-    && c.args[5] >= cx * 32 && c.args[5] < cx * 32 + 64 && c.args[6] >= cy * 32 && c.args[6] < cy * 32 + 64);
-  // bottom-centre aligned in the footprint (hand-computed from the V2 rects)
-  assert.deepEqual(find('tank_a', 7, 1).args.slice(5, 9), [7 * 32 + 9, 62, 14, 34]);
-  assert.deepEqual(find('tank_b', 12, 1).args.slice(5, 9), [12 * 32 + 10, 62, 12, 34]);
-  assert.deepEqual(find('plant', 1, 1).args.slice(5, 9), [32 + 10, 2 * 32 - 16, 12, 16]);
-  assert.deepEqual(find('plant', 18, 1).args.slice(5, 9), [18 * 32 + 10, 2 * 32 - 16, 12, 16]);
-  assert.deepEqual(find('floor_mat', 4, 6).args.slice(5, 9), [4 * 32 + 8, 6 * 32 + 20, 48, 12]);
-  assert.deepEqual(find('floor_mat', 14, 6).args.slice(5, 9), [14 * 32 + 8, 6 * 32 + 20, 48, 12]);
-  assert.deepEqual(find('wall_light', 5, 0).args.slice(5, 9), [5 * 32 + 10, 26, 12, 6]);
-  assert.deepEqual(find('wall_light', 14, 0).args.slice(5, 9), [14 * 32 + 10, 26, 12, 6]);
-  assert.equal(drawn.filter((c) => c.args[1] === DFRAMES.floor_grate.x && c.args[2] === DFRAMES.floor_grate.y).length, 4);
-  assert.deepEqual(drawn.filter((c) => c.args[1] === DFRAMES.floor_grate.x).map((c) => c.args.slice(5, 9))[0], [5 * 32 + 6, 7 * 32 + 8, 20, 24]);
-}));
-
-test('decor: draw order is floor+walls, floor details, decorations, consoles/sensors/doors/exits, players, HUD', () => withDecor(() => {
-  const { calls } = drawL1();
-  const idx = (pred) => calls.map((c, i) => (pred(c) ? i : -1)).filter((i) => i >= 0);
-  const sheetFrame = (frameNames) => (c) => c.name === 'drawImage' && c.args[0] === SHEET
-    && frameNames.some((n) => c.args[1] === FRAMES[n].x && c.args[2] === FRAMES[n].y);
-  const lastFloorOrWall = Math.max(...idx(sheetFrame(['floor', 'wall', 'wall_center'])));
-  const isDetail = (c) => c.args[0] === DECOR && [DFRAMES.floor_mat, DFRAMES.floor_grate].some((f) => f.x === c.args[1] && f.y === c.args[2]);
-  const details = idx((c) => c.name === 'drawImage' && isDetail(c));
-  const others = idx((c) => c.name === 'drawImage' && c.args[0] === DECOR && !isDetail(c));
-  const objects = idx(sheetFrame(['door_1', 'door_0', 'sensor_idle', 'terminal_h', 'exit']));
-  const players = idx((c) => c.name === 'drawImage' && (c.args[0] === ALICE || c.args[0] === BOB));
-  assert.equal(details.length, 6);
-  assert.equal(others.length, 6);
-  assert.ok(lastFloorOrWall < Math.min(...details), 'floor and walls first');
-  assert.ok(Math.max(...details) < Math.min(...others), 'floor details before the other decorations');
-  assert.ok(Math.max(...others) < Math.min(...objects), 'decorations before consoles/sensors/doors/exits');
-  assert.ok(Math.max(...objects) < Math.min(...players), 'players after objects');
-}));
-
-test('decor: overlay (HUD) text is drawn after every decoration and player', () => withDecor(() => {
-  const { ctx, calls } = recCtx();
-  createRenderer(canvasWith(ctx)).draw(jointWorld(), snap('0', '0'), view({ overlay: 'win' }), 0);
-  const lastImage = Math.max(...calls.map((c, i) => (c.name === 'drawImage' ? i : -1)));
-  const overlayText = calls.findIndex((c) => c.name === 'fillText' && c.args[0] === 'Level complete');
-  assert.ok(overlayText > lastImage);
-}));
-
-test('decor: decorations are drawn even before the first snapshot (static scenery)', () => withDecor(() => {
-  const { ctx, calls } = recCtx();
-  createRenderer(canvasWith(ctx)).draw(jointWorld(), null, view(), 0);
-  assert.equal(decorCalls(calls).length, 12);
-}));
-
-test('decor: nothing is drawn when SPRITES.decor is absent (sprites still draw normally)', () => withDecor(() => {
-  const { calls } = drawL1();
-  assert.equal(decorCalls(calls).length, 0);
-  assert.ok(calls.some((c) => c.name === 'drawImage' && c.args[0] === SHEET));
-}, { decor: null }));
-
-test('decor: nothing is drawn without any spritesheet, and a decor-only SPRITES does not crash the base layers', () => {
-  delete globalThis.SPRITES;
-  assert.equal(drawL1().calls.filter((c) => c.name === 'drawImage').length, 0);
-  withDecor(() => {
-    const { calls } = drawL1();
-    assert.equal(decorCalls(calls).length, 12); // decor atlas alone is enough for scenery; base art is procedural
-  }, { sheet: false });
 });
 
-test('decor: unknown sprite names and levels without decorations draw nothing extra', () => withDecor(() => {
-  const world = jointWorld();
-  world.grid.decorations = [{ sprite: 'unobtainium', cell: [3, 3], footprint: [1, 1] }, { sprite: 'floor_grate', cell: [3, 3], footprint: [1, 1] }];
-  const { ctx, calls } = recCtx();
-  createRenderer(canvasWith(ctx)).draw(world, snap('1', '1'), view(), 0);
-  assert.equal(decorCalls(calls).length, 1);
-  const l2 = recCtx();
-  createRenderer(canvasWith(l2.ctx)).draw(worldOf(2), objSnap({ opp_A: '1', opp_B: '1' }), view(), 0);
-  assert.equal(decorCalls(l2.calls).length, 0);
+// ---------- decorations (theme props) ----------
+// A 20x12 map (the engine maximum): two-column divider.
+const wideWorld = () => createWorld(parseLevel({
+  id: 'wide',
+  map: ['#'.repeat(20), '#A' + '.'.repeat(7) + '##' + '.'.repeat(7) + 'B#', ...Array.from({ length: 9 }, () => '#' + '.'.repeat(8) + '##' + '.'.repeat(8) + '#'), '#'.repeat(20)],
+  legend: { '#': 'wall', '.': 'floor', A: 'alice_start', B: 'bob_start' },
+}));
+const decoWorld = (decorations, theme = 'lab') => createWorld(parseLevel(smallView({ theme, decorations })));
+const S0 = { objects: {}, measured: [null, null] };
+
+test('props: a prop is drawn 1:1 from its sheet at the bottom-centre of its footprint', () => withSprites(() => {
+  const world = decoWorld([{ sprite: 'dilution_fridge_a', cell: [2, 2], footprint: [2, 2] }, { sprite: 'optical_table', cell: [9, 4], footprint: [3, 2] }]);
+  const calls = drawn(world, S0);
+  const fridge = THEMES.lab.props.dilution_fridge_a;
+  const c = calls.find((x) => x.name === 'drawImage' && x.args[0] === IMG.lab.props && x.args[1] === fridge.x && x.args[2] === fridge.y);
+  assert.deepEqual(c.args.slice(3, 9), [fridge.w, fridge.h, 2 * 32 + Math.floor((64 - fridge.w) / 2), 2 * 32 + 64 - fridge.h, fridge.w, fridge.h]);
+  const table = THEMES.lab.props.optical_table;
+  const t = calls.find((x) => x.name === 'drawImage' && x.args[1] === table.x && x.args[2] === table.y);
+  assert.equal(t.args[7], table.w, 'drawn 1:1, no scaling');
+  assert.ok(Number.isInteger(t.args[5]) && Number.isInteger(t.args[6]));
 }));
 
-test('decor: no decoration rectangle overlaps a gameplay cell of level 1', () => withDecor(() => {
-  const { calls, world } = drawL1();
-  const cells = new Set([
-    ...world.terminals.map((t) => [t.x, t.y]),
-    ...world.doors.map((d) => [d.x, d.y]), ...world.sensors.map((s) => [s.x, s.y]), ...world.exits.map((e) => [e.x, e.y]),
-    [world.players.alice.x, world.players.alice.y], [world.players.bob.x, world.players.bob.y],
-  ].map(([x, y]) => `${x},${y}`));
-  assert.equal(cells.size, 10);
-  for (const c of decorCalls(calls)) {
-    const [, , , , , dx, dy, dw, dh] = c.args;
-    for (let y = Math.floor(dy / 32); y <= Math.floor((dy + dh - 1) / 32); y++) {
-      for (let x = Math.floor(dx / 32); x <= Math.floor((dx + dw - 1) / 32); x++) {
-        assert.ok(!cells.has(`${x},${y}`), `decoration pixels overlap gameplay cell ${x},${y}`);
-      }
-    }
-  }
+test('props: small 1x1 props come from the tiles sheet (registry sheet: "tiles")', () => withSprites(() => {
+  const p = THEMES.lab.props.plant;
+  assert.equal(p.sheet, 'tiles');
+  const calls = drawn(decoWorld([{ sprite: 'plant', cell: [3, 3], footprint: [1, 1] }]), S0);
+  const c = calls.find((x) => x.name === 'drawImage' && x.args[0] === IMG.lab.tiles && x.args[1] === p.x && x.args[2] === p.y && x.args[3] === 32);
+  assert.ok(c, 'plant cut from the tiles sheet');
 }));
 
-test('renderer draws through setTransform(scale) so drawing keeps logical 640x384 coordinates', () => {
+test('props: draw order is floor+walls, floor decals, furniture back to front, consoles/doors/sensors/exits, players', () => withSprites(() => {
+  const world = decoWorld([
+    { sprite: 'locker', cell: [2, 5], footprint: [1, 2] },           // lower: drawn after the one above it
+    { sprite: 'server_rack_a', cell: [4, 2], footprint: [1, 2] },
+    { sprite: 'floor_grate', cell: [5, 5], footprint: [2, 1] },        // listed late but a floor decal: drawn first
+  ]);
+  const calls = drawn(world, S0);
+  const imgs = calls.filter((c) => c.name === 'drawImage');
+  const idxOf = (name) => imgs.findIndex((c) => c.args[0] === IMG.lab.props && c.args[1] === THEMES.lab.props[name].x && c.args[2] === THEMES.lab.props[name].y);
+  const lastFloor = imgs.findIndex((c) => c.args[0] === IMG.lab.tiles && c.args[5] === 13 * 32 && c.args[6] === 6 * 32); // last room cell
+  assert.ok(idxOf('floor_grate') >= 0 && idxOf('server_rack_a') >= 0 && idxOf('locker') >= 0);
+  assert.ok(lastFloor >= 0 && lastFloor < idxOf('floor_grate'), 'floor first');
+  assert.ok(idxOf('floor_grate') < idxOf('server_rack_a'), 'decal before furniture');
+  assert.ok(idxOf('server_rack_a') < idxOf('locker'), 'back to front');
+  const firstPlayer = imgs.findIndex((c) => c.args[0] === ALICE || c.args[0] === BOB);
+  assert.ok(idxOf('locker') < firstPlayer, 'players after props');
+}));
+
+test('props: animated pairs alternate at 2 fps and stay on frame a under reduced motion', () => withSprites(() => {
+  const world = decoWorld([{ sprite: 'dilution_fridge_a', cell: [2, 2], footprint: [2, 2] }]);
+  const frame = (t, opts) => {
+    const c = drawn(world, S0, view(), t, opts).find((x) => x.name === 'drawImage' && x.args[0] === IMG.lab.props && x.args[3] !== 32);
+    return Object.entries(THEMES.lab.props).find(([, p]) => p.sheet === 'props' && p.x === c.args[1] && p.y === c.args[2])[0];
+  };
+  assert.equal(frame(0), 'dilution_fridge_a');
+  assert.equal(frame(500), 'dilution_fridge_b');
+  assert.equal(frame(1000), 'dilution_fridge_a');
+  assert.equal(frame(500, { reduceMotion: true }), 'dilution_fridge_a');
+}));
+
+test('props: unknown sprite names and an absent theme draw nothing extra and never throw', () => {
+  const world = decoWorld([{ sprite: 'unobtainium', cell: [3, 3], footprint: [1, 1] }, { sprite: 'floor_grate', cell: [3, 3], footprint: [2, 1] }]);
+  withSprites(() => {
+    const calls = drawn(world, S0);
+    const g = THEMES.lab.props.floor_grate;
+    assert.equal(calls.filter((c) => c.name === 'drawImage' && c.args[0] === IMG.lab.props && c.args[1] === g.x && c.args[2] === g.y).length, 1);
+  });
+  assert.equal(drawn(world, S0).filter((c) => c.name === 'drawImage').length, 0);
+});
+
+test('props: scenery is drawn before the first snapshot; a wall_* prop may sit on the top wall row', () => withSprites(() => {
+  const world = decoWorld([{ sprite: 'wall_clock', cell: [3, 0], footprint: [1, 1] }]);
+  const calls = drawn(world, null);
+  const clock = THEMES.lab.props.wall_clock;
+  assert.ok(calls.some((c) => c.name === 'drawImage' && c.args[1] === clock.x && c.args[2] === clock.y));
+}));
+
+test('props: the overlay text is drawn after every prop and player', () => withSprites(() => {
+  const world = decoWorld([{ sprite: 'plant', cell: [3, 3], footprint: [1, 1] }]);
+  const calls = drawn(world, S0, view({ overlay: 'win' }));
+  const lastImage = Math.max(...calls.map((c, i) => (c.name === 'drawImage' ? i : -1)));
+  assert.ok(calls.findIndex((c) => c.name === 'fillText' && c.args[0] === 'Level complete') > lastImage);
+}));
+
+test('variable map size: a 15x9 level is 480x288 logical px, the canvas follows the grid and the overlay is centred on it', () => {
+  const world = createWorld(parseLevel(smallView()));
+  assert.deepEqual(logicalSize(world.grid), { w: 480, h: 288 });
   const ctx = stubCtx();
   const canvas = { getContext: () => ctx, width: 640, height: 384 };
   const r = createRenderer(canvas);
-  r.draw(jointWorld(), snap('0', '0'), view(), 0);
+  r.setScale(2);
+  r.draw(world, S0, view({ overlay: 'win' }), 0);
+  assert.deepEqual([canvas.width, canvas.height], [960, 576]);
+  assert.ok(ctx.calls.some((c) => c[0] === 'clearRect' && c[3] === 480 && c[4] === 288));
+  assert.ok(ctx.calls.some((c) => c[0] === 'fillText' && c[1] === 'Level complete' && c[2] === 240 && c[3] === 144 - 14));
+  r.draw(wideWorld(), S0, view(), 0); // a 20x12 map again
+  assert.deepEqual([canvas.width, canvas.height], [1280, 768]);
+});
+
+test('variable map size: the divider (single column on odd widths) is drawn on every row, procedural too', () => {
+  const world = createWorld(parseLevel(smallView()));
+  const calls = drawn(world, S0);
+  const rects = calls.filter((c) => c.name === 'strokeRect' && c.args[0] === 7 * 32 + 1);
+  assert.equal(rects.length, 9);
+});
+
+
+test('renderer draws through setTransform(scale) so drawing keeps logical coordinates (cells x 32)', () => {
+  const ctx = stubCtx();
+  const canvas = { getContext: () => ctx, width: 640, height: 384 };
+  const r = createRenderer(canvas);
+  r.draw(wideWorld(), S0, view(), 0);
   assert.deepEqual(ctx.calls.find((c) => c[0] === 'setTransform'), ['setTransform', 1, 0, 0, 1, 0, 0]);
-  assert.equal(canvas.width, 640);
+  assert.deepEqual([canvas.width, canvas.height], [640, 384]);
   ctx.calls.length = 0;
   r.setScale(3);
   assert.equal(canvas.width, 1920);
   assert.equal(canvas.height, 1152);
   assert.equal(ctx.imageSmoothingEnabled, false); // resizing resets context state: it is switched off again
-  r.draw(jointWorld(), snap('0', '0'), view(), 0);
+  r.draw(wideWorld(), S0, view(), 0);
   assert.deepEqual(ctx.calls.find((c) => c[0] === 'setTransform'), ['setTransform', 3, 0, 0, 3, 0, 0]);
   assert.ok(ctx.calls.some((c) => c[0] === 'clearRect' && c[3] === 640 && c[4] === 384)); // still logical units
+  ctx.calls.length = 0;
+  r.draw(jointWorld(), snap('0', '0'), view(), 0); // level 1 is 15x9: 480x288 logical, x3 backing
+  assert.deepEqual([canvas.width, canvas.height], [1440, 864]);
+  assert.ok(ctx.calls.some((c) => c[0] === 'clearRect' && c[3] === 480 && c[4] === 288));
 });
 
 test('renderer.setScale ignores an unchanged scale (resizing a canvas clears it)', () => {
