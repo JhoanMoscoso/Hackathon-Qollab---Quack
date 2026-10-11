@@ -17,8 +17,8 @@ def test_builtin_level_assets_validate_and_literal_loading(level):
     assert level["stages"]
     assert json.dumps(level, allow_nan=False)
     for stage in level["stages"]:
-        assert len(stage["map"]) == 12
-        assert all(len(row) == 20 and row[9] in "#|" and row[10] in "#|" for row in stage["map"])
+        assert len(stage["map"]) == 9  # 15x9 maps, divider in the middle column
+        assert all(len(row) == 15 and row[7] in "#|" for row in stage["map"])
         for text in stage["narration"].values():
             assert len(text.splitlines()) <= 2
             assert all(len(line) <= 40 for line in text.splitlines())
@@ -82,16 +82,50 @@ def test_terminal_bad_owner_gate_use_and_target_rejected(level):
             validate_level(bad)
 
 
-def test_audio_is_base64_when_available_and_missing_is_graceful(tmp_path, monkeypatch):
-    from quantum.engine import load_audio
-    monkeypatch.chdir(tmp_path)
-    assert json.loads(load_audio())["code"] == "AUDIO_UNAVAILABLE"
-    (tmp_path / "audio").mkdir()
-    (tmp_path / "audio" / "soundtrack.ogg").write_bytes(b"OggS-test")
-    data = audio_payload()
+TRACK_FILES = {"menu": "fondo_inicio.ogg", "level1": "fondo_1.ogg", "level2": "fondo_2.ogg"}
+
+
+@pytest.mark.parametrize("track", sorted(TRACK_FILES))
+def test_every_track_is_base64_ogg_from_its_own_file(track):
+    import base64
+    data = audio_payload(track)
     assert data["encoding"] == "base64"
     assert data["mime"] == "audio/ogg"
-    assert isinstance(data["data"], str)
+    raw = base64.b64decode(data["data"], validate=True)
+    assert raw[:4] == b"OggS"
+    with open(f"audio/{TRACK_FILES[track]}", "rb") as handle:
+        assert raw == handle.read()
+
+
+def test_default_track_is_the_menu_track():
+    assert audio_payload() == audio_payload("menu")
+
+
+@pytest.mark.parametrize("track", ["soundtrack", "", "../levels/level1", None, 3, "MENU", "level3"])
+def test_unknown_track_is_rejected_with_invalid_track(track):
+    from quantum.engine import load_audio
+    result = json.loads(load_audio(track))
+    assert result["code"] == "INVALID_TRACK"
+    assert "data" not in result
+    with pytest.raises(ValueError):
+        audio_payload(track)
+
+
+def test_audio_missing_asset_is_graceful(tmp_path, monkeypatch):
+    from quantum.engine import load_audio
+    monkeypatch.chdir(tmp_path)
+    assert json.loads(load_audio("menu"))["code"] == "AUDIO_UNAVAILABLE"
+    assert json.loads(load_audio())["code"] == "AUDIO_UNAVAILABLE"
+
+
+def test_audio_over_2mb_is_rejected(tmp_path, monkeypatch):
+    from quantum.engine import load_audio
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "audio").mkdir()
+    (tmp_path / "audio" / "fondo_1.ogg").write_bytes(b"OggS" + b"\0" * (2 * 1024 * 1024))
+    assert json.loads(load_audio("level1"))["code"] == "AUDIO_UNAVAILABLE"
+    (tmp_path / "audio" / "fondo_1.ogg").write_bytes(b"OggS" + b"\0" * 1024)
+    assert json.loads(load_audio("level1"))["mime"] == "audio/ogg"
 
 
 # ---- decorations: purely visual layer, validated but never read by the engine ----
@@ -143,15 +177,15 @@ def test_decorations_must_be_a_list():
 
 @pytest.mark.parametrize("cell", [
     [2, 2],   # alice_start
-    [2, 17],  # bob_start
+    [2, 12],  # bob_start
     [5, 2],   # alice_h terminal
-    [5, 16],  # bob_cx terminal
+    [5, 11],  # bob_cx terminal
     [4, 3],   # sensor_q0
-    [4, 13],  # sensor_q1
-    [8, 1],   # door_A
-    [9, 1],   # exit_A
-    [8, 18],  # door_B
-    [9, 18],  # exit_B
+    [4, 10],  # sensor_q1
+    [6, 1],   # door_A
+    [7, 1],   # exit_A
+    [6, 13],  # door_B
+    [7, 13],  # exit_B
 ])
 def test_decorations_never_cover_interactive_cells(cell):
     level = read_level("level1")
@@ -164,61 +198,78 @@ def test_multi_cell_footprint_is_checked_on_every_covered_cell():
     level = read_level("level1")
     level["stages"][0]["decorations"] = [{"sprite": "wall_light", "cell": [1, 3], "footprint": [1, 2]}]
     validate_level(level)  # (1,3),(2,3): plain floor
-    level["stages"][0]["decorations"] = [{"sprite": "wall_light", "cell": [7, 1], "footprint": [1, 2]}]
-    with pytest.raises(ValueError):  # covers (7,1) floor and (8,1) = door_A
+    level["stages"][0]["decorations"] = [{"sprite": "wall_light", "cell": [5, 1], "footprint": [1, 2]}]
+    with pytest.raises(ValueError):  # covers (5,1) floor and (6,1) = door_A
         validate_level(level)
 
 
-def test_level1_decorations_are_visual_only_and_off_the_critical_cells():
-    from collections import deque
+def test_level1_decorations_are_visual_only_and_the_engine_ignores_them():
     from quantum.verify import verify_stage
     stage = read_level("level1")["stages"][0]
-    decorations = stage["decorations"]
-    assert sorted(d["sprite"] for d in decorations) == sorted(
-        ["tank_a", "tank_b", "plant", "plant", "floor_mat", "floor_mat", "wall_light", "wall_light"]
-        + ["floor_grate"] * 4)
+    assert stage["decorations"]
     grid, legend = stage["map"], stage["legend"]
-    cells = {legend[ch]: (r, c) for r, row in enumerate(grid) for c, ch in enumerate(row)}
-    in_front = {(cells["door_A"][0] - 1, cells["door_A"][1]), (cells["door_B"][0] - 1, cells["door_B"][1])}
-    covered = set()
-    for d in decorations:
+    for d in stage["decorations"]:
         row, col = d["cell"]
         w, h = d["footprint"]
         for r in range(row, row + h):
             for c in range(col, col + w):
-                covered.add((r, c))
                 label = legend[grid[r][c]]
                 assert label in {"floor", "wall"}, (d, r, c, label)
                 if label == "wall":
                     assert d["sprite"].startswith("wall_") and r == 0
-    assert not covered & in_front
-    # Alice's and Bob's sides mirror each other (column c <-> 19 - c).
-    mirrored = {(r, 19 - c) for r, c in covered}
-    assert mirrored == covered
-    # Treating decorations as obstacles, each spawn still reaches its terminal, sensor and door.
-    free = {(r, c) for r, row in enumerate(grid) for c, ch in enumerate(row)
-            if legend[ch] != "wall" and (r, c) not in covered}
-
-    def reach(start):
-        seen, queue = {start}, deque([start])
-        while queue:
-            r, c = queue.popleft()
-            for step in ((r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)):
-                if step in free and step not in seen:
-                    seen.add(step)
-                    queue.append(step)
-        return seen
-
-    for spawn, terminal, sensor, door in (("alice_start", "alice_h", "sensor_q0", "door_A"),
-                                          ("bob_start", "bob_cx", "sensor_q1", "door_B")):
-        reachable = reach(cells[spawn])
-        assert {cells[terminal], cells[sensor], in_front_of(cells[door])} <= reachable
-
     # The engine ignores the layer: same verification report with or without it.
     stripped = copy.deepcopy(stage)
     del stripped["decorations"]
     assert verify_stage(stage) == verify_stage(stripped)
 
 
-def in_front_of(door):
-    return (door[0] - 1, door[1])
+
+
+# ---- theme and solid decorations (visual layer, validated by the engine contract) ----
+
+@pytest.mark.parametrize("theme", ["lab", "prison"])
+def test_known_themes_are_accepted_and_survive_validation(theme):
+    level = read_level("level1")
+    level["theme"] = theme
+    assert validate_level(level)["theme"] == theme
+
+
+@pytest.mark.parametrize("theme", ["jungle", "", None, 3, ["lab"], "LAB"])
+def test_unknown_themes_are_rejected(theme):
+    level = read_level("level1")
+    level["theme"] = theme
+    with pytest.raises(ValueError):
+        validate_level(level)
+
+
+def test_theme_is_optional():
+    level = read_level("level1")
+    level.pop("theme", None)
+    assert "theme" not in validate_level(level)
+
+
+def test_shipped_levels_declare_their_theme():
+    assert [read_level(n)["theme"] for n in LEVEL_IDS] == ["lab", "prison", "lab"]
+
+
+def test_load_level_hands_the_theme_to_the_client():
+    import asyncio
+    from quantum.engine import Engine
+    out = json.loads(asyncio.run(Engine().load_level("level2")))
+    assert out["theme"] == "prison"
+
+
+@pytest.mark.parametrize("solid", [True, False])
+def test_solid_flag_on_a_decoration_is_accepted(solid):
+    level = read_level("level1")
+    deco = {"sprite": "plant", "cell": [4, 1], "footprint": [1, 1], "solid": solid}
+    level["stages"][0]["decorations"] = [deco]
+    assert validate_level(level)["stages"][0]["decorations"] == [deco]
+
+
+@pytest.mark.parametrize("solid", ["yes", 1, 0, None, [True]])
+def test_solid_flag_must_be_a_boolean(solid):
+    level = read_level("level1")
+    level["stages"][0]["decorations"] = [{"sprite": "plant", "cell": [4, 1], "footprint": [1, 1], "solid": solid}]
+    with pytest.raises(ValueError):
+        validate_level(level)

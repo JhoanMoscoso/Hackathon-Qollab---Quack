@@ -1,4 +1,8 @@
-# Lab decorations (Level 1)
+# Lab decorations (Level 1) - RETIRED
+
+> **Retired:** the game no longer embeds this atlas. Themed tiles and props now come from `assets/themes/`
+> (`scripts/slice-themes.sh`, registries `assets/themes/{lab,prison}.json`, embedded as `THEMES` in `js/sprites.js`).
+> The files stay on disk for the artist; the text below describes the old pipeline.
 
 `assets/lab_decorations.json` is a **hand-mapped registry** for `assets/lab_elements.png` (Fernanda's V2,
 256x256, binary alpha). It was mapped by eye from real pixel rects because the shipped index

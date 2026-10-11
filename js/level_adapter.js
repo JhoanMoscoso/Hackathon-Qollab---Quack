@@ -27,6 +27,7 @@ export function stageView(level, stageIndex) {
   const stage = level.stages[stageIndex];
   return {
     id,
+    theme: level.theme ?? 'lab', // art set: 'lab' | 'prison'
     stageId: stage.id,
     title: stage.title ?? level.title,
     map: stage.map,

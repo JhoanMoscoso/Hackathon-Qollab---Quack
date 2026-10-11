@@ -2,16 +2,25 @@
 // Coordinates are [x, y] = [col, row] everywhere; tiles are indexed [y][x].
 
 export const CELL = 32;
-export const COLS = 20;
-export const ROWS = 12;
-export const WALL_COLS = [9, 10]; // central wall separating Alice's and Bob's rooms
+export const MAX_COLS = 20; // engine maximum (quantum/levels.py); maps may be any rectangle up to this size
+export const MAX_ROWS = 12;
+export const THEMES = ['lab', 'prison', 'core'];
+export const DEFAULT_THEME = 'lab';
 
-export const inBounds = (x, y) => x >= 0 && x < COLS && y >= 0 && y < ROWS;
+/**
+ * Columns of the central wall that separates Alice's room (left) from Bob's (right): the single middle column of
+ * an odd-width map, the two middle columns of an even-width one.
+ */
+export function dividerColumns(width) {
+  return width % 2 ? [(width - 1) / 2] : [width / 2 - 1, width / 2];
+}
+
+export const inBounds = (grid, x, y) => x >= 0 && x < grid.width && y >= 0 && y < grid.height;
 export const cellKey = (x, y) => `${x},${y}`;
 
 /** True for '#' tiles and anything out of bounds. Objects (doors etc.) are NOT walls here. */
 export function isWall(grid, x, y) {
-  return !inBounds(x, y) || grid.tiles[y][x] === '#';
+  return !inBounds(grid, x, y) || grid.tiles[y][x] === '#';
 }
 
 /**
@@ -22,19 +31,27 @@ export function isWall(grid, x, y) {
 export function parseLevel(level) {
   const { map, legend = {}, objects: objectCfg = {}, terminals: terminalCfg = [], decorations: decorationCfg = [] } = level;
   const id = level.id ?? '?';
-  if (!Array.isArray(map) || map.length !== ROWS) {
-    throw new Error(`Level "${id}": map must have ${ROWS} rows, got ${Array.isArray(map) ? map.length : typeof map}`);
+  const theme = level.theme ?? DEFAULT_THEME;
+  if (!THEMES.includes(theme)) throw new Error(`Level "${id}": unknown theme "${theme}" (expected ${THEMES.join(' | ')})`);
+  if (!Array.isArray(map) || map.length === 0) {
+    throw new Error(`Level "${id}": map must be a non-empty list of rows, got ${Array.isArray(map) ? 'an empty list' : typeof map}`);
   }
+  const COLS = map[0]?.length;
+  const ROWS = map.length;
+  if (ROWS > MAX_ROWS) throw new Error(`Level "${id}": map has ${ROWS} rows, at most ${MAX_ROWS} are allowed`);
   map.forEach((row, y) => {
     if (typeof row !== 'string' || row.length !== COLS) {
-      throw new Error(`Level "${id}": map row ${y} must be ${COLS} wide, got ${row?.length}`);
+      throw new Error(`Level "${id}": map row ${y} must be ${COLS} wide like row 0, got ${row?.length}`);
     }
   });
+  if (!(COLS > 0) || COLS > MAX_COLS) throw new Error(`Level "${id}": map is ${COLS} wide, between 1 and ${MAX_COLS} are allowed`);
 
   const tiles = map.map((row) => [...row]);
   const grid = {
     width: COLS,
     height: ROWS,
+    theme,
+    divider: dividerColumns(COLS),
     tiles,
     spawns: {},
     objects: [],
@@ -42,9 +59,11 @@ export function parseLevel(level) {
     terminals: [],
     cnot: null,
     exits: { alice: null, bob: null },
-    // Visual layer only: never read by collision, interaction or the engine. cell = top-left [x, y].
+    // Visual layer. cell = top-left [x, y]. `solid: true` additionally blocks player movement over the footprint
+    // (see entities.createWorld); when absent, the theme registry default applies.
     decorations: decorationCfg.map((d) => ({
       sprite: d.sprite, cell: [d.cell[0], d.cell[1]], footprint: d.footprint ? [d.footprint[0], d.footprint[1]] : [1, 1],
+      ...(d.solid !== undefined && { solid: !!d.solid }),
     })),
   };
 
@@ -90,7 +109,7 @@ export function parseLevel(level) {
 
   // The map may omit a terminal legend char (spec-style levels): any in-bounds non-wall cell is fine.
   const checkCell = (cell) => {
-    if (!Array.isArray(cell) || isWall({ tiles }, cell[0], cell[1])) {
+    if (!Array.isArray(cell) || isWall(grid, cell[0], cell[1])) {
       throw new Error(`Level "${id}": terminal at [${cell}] is out of bounds or on a wall`);
     }
     return [cell[0], cell[1]];
