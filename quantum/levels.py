@@ -57,20 +57,24 @@ def validate_level(level: dict) -> dict:
                 raise ValueError("CX needs different operands")
         validation = stage.get("validation")
         if validation is not None:
+            mode = validation.get("mode", "manual") if isinstance(validation, dict) else None
             if (not isinstance(validation, dict)
                     or validation.get("target_bell") not in {"Phi+", "Phi-", "Psi+", "Psi-"}
-                    or not isinstance(validation.get("required_sequence"), list)
-                    or not validation["required_sequence"]):
+                    or mode not in {"automatic", "manual"}
+                    or (mode == "manual" and (not isinstance(validation.get("required_sequence"), list)
+                                               or not validation["required_sequence"]))
+                    or (mode == "automatic" and "required_sequence" in validation
+                        and not isinstance(validation["required_sequence"], list))):
                 raise ValueError("Invalid circuit validation protocol")
             if circuit:
                 raise ValueError("Validated construction must start with an empty circuit")
-            for op in validation["required_sequence"]:
+            for op in validation.get("required_sequence", []):
                 if (not isinstance(op, list) or not op or op[0] not in {"h", "x", "z", "cx"}
                         or len(op) != (3 if op[0] == "cx" else 2)
                         or any(not integer(q, upper=2) for q in op[1:])
                         or (op[0] == "cx" and op[1] == op[2])):
                     raise ValueError("Invalid validation gate sequence")
-            if len(validation["required_sequence"]) > stage["max_gates"]:
+            if len(validation.get("required_sequence", [])) > stage["max_gates"]:
                 raise ValueError("Validation sequence exceeds gate budget")
         feed_forward = stage.get("feed_forward")
         if feed_forward is not None:
@@ -88,9 +92,14 @@ def validate_level(level: dict) -> dict:
         if not isinstance(win, dict) or not win:
             raise ValueError("Missing win condition")
         if "parity" in win:
-            if set(win) != {"parity"} or win["parity"] not in {"equal", "different"}:
+            if (set(win) not in ({"parity"}, {"bell_label", "parity"})
+                    or win["parity"] not in {"equal", "different"}):
                 raise ValueError("Invalid parity condition")
-        elif any(k not in {"q0", "q1"} or not integer(v, upper=2) for k, v in win.items()):
+            if "bell_label" in win and (validation is None
+                    or win["bell_label"] != validation["target_bell"]):
+                raise ValueError("Bell objective must match its validation target")
+        elif any(k not in {"q0", "q1"} for k in win) or any(
+                not integer(v, upper=2) for v in win.values()):
             raise ValueError("Invalid win pattern")
         required = stage.get("required_measurements")
         if (not isinstance(required, list) or len(set(required)) != len(required)
@@ -101,6 +110,10 @@ def validate_level(level: dict) -> dict:
             raise ValueError("Win qubits must be explicitly measured")
         if feed_forward is not None and (win != {"q0": 0} or set(required) != {0, 1}):
             raise ValueError("Bell Block measures both qubits and targets Alice=0, not Bob's bit")
+        if validation is not None and "parity" in win:
+            expected_parity = "equal" if validation["target_bell"].startswith("Phi") else "different"
+            if win["parity"] != expected_parity:
+                raise ValueError("Bell validation target and parity objective disagree")
         if stage.get("failure_policy") not in {"retry_stage", "death"}:
             raise ValueError("Invalid failure policy")
         grid = stage.get("map")
@@ -184,7 +197,7 @@ def validate_level(level: dict) -> dict:
             uses = terminal.get("uses")
             if uses is not None and not integer(uses, lower=1):
                 raise ValueError("Terminal uses must be positive or null")
-        if validation is not None:
+        if validation is not None and validation.get("mode", "manual") == "manual":
             for op in validation["required_sequence"]:
                 if not any(t["gate"] == op[0] and t["qubit"] == op[1]
                            and t.get("target", -1) == (op[2] if len(op) == 3 else -1)

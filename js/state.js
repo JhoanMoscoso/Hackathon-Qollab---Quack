@@ -7,15 +7,19 @@ export const STATES = Object.freeze({
   LEVEL: 'level',
   DEAD: 'dead',
   WIN: 'win',
+  TRANSITION: 'transition',
+  FINALE: 'finale',
 });
 
 // Explicit transition table: from -> allowed targets.
 const TRANSITIONS = {
   loading: ['menu'],
   menu: ['level'],
-  level: ['dead', 'win', 'menu'],
+  level: ['dead', 'win', 'transition', 'menu'],
   dead: ['level', 'menu'],
-  win: ['menu', 'level'],
+  win: ['menu', 'level', 'transition'],
+  transition: ['level', 'finale', 'menu'],
+  finale: ['menu', 'level'],
 };
 
 /**

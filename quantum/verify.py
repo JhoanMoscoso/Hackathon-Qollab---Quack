@@ -112,8 +112,9 @@ def campaign_report() -> dict:
         report[level["id"]] = {stage["id"]: verify_stage(stage, level["num_qubits"])
                                 for stage in level["stages"]}
     report["physical_states"] = len(catalog)
-    report["level3"]["core"]["no_cx_probability"] = verify_stage(
-        all_levels[2]["stages"][0], allow_cx=False)["probability"]
+    core_stage = all_levels[2]["stages"][0]
+    report["level3"][core_stage["id"]]["no_cx_probability"] = verify_stage(
+        core_stage, allow_cx=False)["probability"]
     return report
 
 
@@ -128,13 +129,15 @@ def main() -> int:
             handle.write(rendered + "\n")
     else:
         print(rendered)
-    expected = {"bell_preparation": 1.0, "bell_block": 1.0, "core": 1.0}
+    expected = {"bell_preparation": 1.0, "bell_block": 1.0}
+    level3 = read_level("level3")
+    expected.update({stage["id"]: 1.0 for stage in level3["stages"]})
     for level in report.values():
         if isinstance(level, dict):
             for stage_id, result in level.items():
                 if stage_id in expected and abs(result["probability"] - expected[stage_id]) > 1e-9:
                     return 1
-    no_cx = verify_stage(read_level("level3")["stages"][0], allow_cx=False)
+    no_cx = verify_stage(level3["stages"][0], allow_cx=False)
     return 0 if no_cx["probability"] < 1.0 else 1
 
 

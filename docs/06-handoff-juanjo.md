@@ -1,5 +1,7 @@
 # Handoff — Juan José (Python / Qiskit)
 
+**Actualización Quantum Core/UI:** L3 cambia target10 por Ψ⁺ preparado desde00 y mediciones opuestas. Mapa temático15×9 y logo/menú QUACK conservados. Los registros previos validan otra versión; esta revisión está **sin pruebas ni ejecución**, por orden explícita del usuario. Detalles §13.
+
 Eres dueño de `quantum/` y de `levels/*.json`. El contrato con Jhoan está en `docs/03-spec-motor-cuantico.md`; este documento dice **en qué orden probar** y qué anotar. Cada experimento termina con una nota en `docs/findings-qiskit.md` (funciona / no funciona / cómo lo resolviste), porque de esas notas salen las decisiones de arquitectura y el texto técnico de la project page.
 
 **Actualización experimental y de entrega: 2026-10-09.** Juanjo creó el proyecto separado **Q-Quack py**, de tipo Python/Qiskit. Los experimentos se resumen en §6; el contexto detallado está en Engram. **El motor, niveles, snapshot y pruebas locales ya están implementados**; estado de entrega e instrucciones para Jhoan en §7. Los bloques E1–E4 siguen siendo experimentos de `main.py`, no el bootstrap del juego.
@@ -514,3 +516,32 @@ El probe comprobó Φ⁺ fresco, ausencia de entrelazamiento tras CX, Z sin modi
 Forte imprimió `Circuit execution time: 1000ms`, separado del total20s. Ninguna de estas salidas mide E7/precompute aislado ni demuestra render60fps. No comparar13.7/20.0 con Runs anteriores como mejora garantizada; carga/colas/runtime varían.
 
 **Balance del handoff06:** motor, JSONL1–L3, snapshots, catálogo/verificador, probes y evidencia Python de los tres niveles entregados. E7/diagnóstico JS previo también validado en su escenario. Falta jugar el frontend completo: CX física simultánea, controles H/Z/X, sensores, muerte/reset, salidas, audio y 1P/2P. Esos son gates de F2/F3 del MD01, no se aprueban automáticamente por la consola. No se agregó código/tests nuevos para registrar estos resultados.
+
+## 13. Revisión Ψ⁺ / presentación QUACK — implementación sin tests
+
+Solicitud del usuario: nuevo Quantum Core, objetivos sin revelar recetas, menú centrado, transiciones y cierre con el logo original. **No se crearon/modificaron tests ni se ejecutaron Node, Python, probes, servidor o verificadores.** Revisión solo por lectura de código/diffs; validación de ejecución a cargo del usuario. La evidencia de target10 anterior no se reutiliza para este Core.
+
+### Adaptación del nuevo L3
+
+- Mantener stages v2, mapa temático15×9, decoraciones y posiciones existentes. El JSON propuesto era v1/22columnas y mezclaba coordenadas: copiarlo literalmente rompería el contrato actual.
+- Inicio00; AliceH (dos usos), BobZ/H (uno cada uno), CX compartida (uno), presupuesto5. Controles existentes H/Z/X se conservan: H=AliceH, Z=BobZ, X=BobH. CX sigue exigiendo ambos jugadores en placas.
+- Win exige Ψ⁺ preparado y paridad diferente tras ambas observaciones. Validación automática del vector completo módulo fase global; conserva la prueba al colapsar. No obliga un orden de receta si otro circuito válido alcanza el estado.
+- Medición prematura conserva el riesgo del Core: colapsa y falla el objetivo. Tras validar se bloquean gates; 01/10 válidos abren ambas puertas no letales, sin depender de open_on0 en los dos lados. L1 manual/RUN y L2 clásico se mantienen.
+- Pistas opcionales en stage.hints. Objetivos visibles: L1Φ⁺ antes de medir, L2Alice0 con resultados00/01, L3Ψ⁺ antes de medir y resultados01/10. No confundir Ψ⁺ intermedio deL2 con su condición final.
+- Si el gate set cambia las familias alcanzables, priorización de precompute rellena desde catálogo real hasta diez pares; no fuerza keys inexistentes ni realiza otro job. Nuevo tamaño del catálogo no medido.
+
+### Presentación y control de estados
+
+- Menú original HTML/CSS con títuloSVG de `js/title.js` (bitmap5×7, Qvioleta/ghosts, letras claras). La misma función renderTitle/clases se usan para el cierre; sin fuentes/assets/dependencias nuevas.
+- Transición de2.2s gobernada por timestamps del requestAnimationFrame existente: estabilización, onda pixelada, presentación y entrada. Reduce motion omite movimiento/FX y usa cambio breve.
+- Estados transition/finale en la máquina existente. Victoria requiere objetivo real+ambas salidas; se activa una vez. Input/colas se vacían y botones/gates/medición se bloquean; epoch y RPC serializado descartan resultados viejos. El backend inicial no bloquea esa cola cuando continúa en fallback.
+- Transición L1→L2 yL2→L3 carga sesión/mapa/personajes/objetos/recursos nuevos sin precompute adicional. ÚltimoL3 abre finale, nunca level4 ni reinicioL3. Play again empiezaL1 en mismo modo; Main menu conserva opciones.
+- Menú/cierre centrados como conjuntos y con scroll en pantallas pequeñas. Se conservan colores, botones, logo, animaciones y reduce-motion originales.
+
+Pendiente manual: resize/foco/1P2P, recorrido de tres objetivos, bloqueos, entradas y cancelaciónEsc, ambas ramas finales del Core y botones de cierre. Los tests/probes anteriores deCore10 necesitarán adaptación por el usuario; no fueron actualizados ni ejecutados aquí. Cambios locales en main; sin commit/push/PR para esta solicitud.
+
+### Corrección rápida: terminales físicos y legibilidad
+
+Por solicitud posterior, L3 ya no ofrece gates HUD ni atajos H/Z/X. Monitores físicos: AliceH `[fila3,col3]` (dos usos), BobZ `[3,10]`, BobH `[4,11]`; CX sigue en sus placas. Activación mediante interacción normal E/Enter, conservando owner/qubit/presupuesto. Se retiraron dos cables decorativos que taparían H/Z; habitaciones/paredes/sensores/salidas permanecen.
+
+Debugger: body de contenido no se comprime por flex, estadísticas en filas separadas, textos con wrapping y scroll cuando no hay altura. Se evita que los controles/footer caigan encima del contenido desbordado. Sin tests ni ejecución para esta corrección; validación visual a cargo del usuario.

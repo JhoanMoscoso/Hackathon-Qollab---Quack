@@ -20,12 +20,12 @@
 
   <section id="menu" tabindex="-1" aria-labelledby="menu-title" hidden>
     <h1 id="menu-title" class="screen-title quack-title" tabindex="-1">Quack</h1>
-    <p class="hint">A two-player quantum puzzle. Alice and Bob share one entangled state: what one measures, the other learns.</p>
+    <p class="hint">A quantum puzzle for one or two players. Shared states, classical messages and a path through the core.</p>
     <fieldset class="level-select">
       <legend>Level</legend>
       <label><input type="radio" name="level" value="level1" checked> 1 · Calibration Chamber</label>
       <label><input type="radio" name="level" value="level2"> 2 · Bell Block</label>
-      <label><input type="radio" name="level" value="level3"> 3 · The Core</label>
+      <label><input type="radio" name="level" value="level3"> 3 · The Quantum Core</label>
     </fieldset>
     <div class="menu-actions">
       <button id="start-1p" type="button">Start 1 player</button>
@@ -40,6 +40,7 @@
       <li><strong>1 player:</strong> WASD or arrow keys move the active character, E or Enter uses a terminal, Tab switches between Alice and Bob.</li>
       <li><strong>2 players:</strong> Alice uses WASD and E. Bob uses the arrow keys and Enter.</li>
       <li><strong>Anywhere in a level:</strong> Space runs the circuit (levels that ask for it), R resets the current stage, M mutes or unmutes sound, Esc returns to the menu.</li>
+      <li><strong>Gate monitors:</strong> stand on your terminal and use E / Enter. Shared CX needs both players on its plates.</li>
     </ul>
   </section>
 
@@ -66,23 +67,34 @@
           <button id="keep-identity" type="button">Alice · Keep (I)</button>
         </div>
       </section>
-      <section id="core-console" aria-label="The Core gate controls" hidden>
-        <h2 class="dbg-title">The Core · gate controls</h2>
-        <p id="core-hint" role="status">Use CX together, then Alice Z/H; measure both at target 10.</p>
-        <div class="protocol-actions">
-          <button id="core-h" type="button">Alice · H (H)</button>
-          <button id="core-z" type="button">Alice · Z (Z)</button>
-          <button id="core-x" type="button">Bob · X (X)</button>
-        </div>
-      </section>
+      <details id="stage-hints" class="stage-hints" hidden>
+        <summary>Hints (optional)</summary>
+        <ul id="stage-hint-list"></ul>
+      </details>
     </div>
     <div class="bottom-panel">
       <section id="debugger-circuit" aria-label="Circuit"></section>
     </div>
     <section id="gate-guide" aria-label="Gate guide" tabindex="0"></section>
     <div id="narrator"></div>
+    <div id="level-transition" class="level-transition" hidden>
+      <section class="transition-card" aria-labelledby="transition-title">
+        <h2 id="transition-title" class="dbg-title"></h2>
+        <p id="transition-message" role="status" aria-live="polite"></p>
+        <canvas id="transition-effect" width="320" height="96" aria-hidden="true"></canvas>
+      </section>
+    </div>
   </section>
 </main>
+
+<section id="finale" class="screen-composition" tabindex="-1" aria-labelledby="finale-title" hidden>
+  <h1 id="finale-title" class="screen-title quack-title">Quack</h1>
+  <p class="hint">Together, Alice and Bob brought the shared state into balance. The path through the quantum core is complete.</p>
+  <div class="menu-actions">
+    <button id="play-again" type="button">Play again</button>
+    <button id="final-menu" type="button">Main menu</button>
+  </div>
+</section>
 
 <div id="a11y-live" class="visually-hidden" aria-live="polite"></div>
 

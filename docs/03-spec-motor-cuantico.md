@@ -2,6 +2,12 @@
 
 Dueño: Juanjo. Consumidor: Jhoan (`main.js`). Todo lo que se devuelve a JS es **string JSON**.
 
+**Revisión Quantum Core/presentación (sin ejecución por instrucción del usuario):** L3 empieza en00, usa AliceH y BobZ/H con CX compartida y exige Ψ⁺ antes de medir resultados opuestos. `validation.mode="automatic"` conserva la prueba al colapsar; L1 sigue manual, L2 mantiene canal clásico. Puertas L3 `validated_exit`, no open_on0 en ambas. Medir prematuramente colapsa/falla el Core. Los resultados Qollab de target10 son históricos, no validan esta revisión.
+
+Objetivo visible derivado de win/validation de etapa activa, sin receta: L1Φ⁺, L2Alice0 (00/01 finales), L3Ψ⁺ (01/10 finales). Pistas en stage.hints, consumidas por su panel desplegable. Presentación añade transition/finale sin cambiar un backend.run. Ningún test/probe/ejecución de esta variante realizado.
+
+Corrección posterior solicitada: gates deL3 exclusivamente en terminales físicos del mapa, activados por E/Enter. Sin botones HUD ni atajos H/Z/X; mismas gates/usos/presupuesto/objetivo. Consola clásica deL2 aparte, sin cambios.
+
 **Contrato implementado v2:** niveles con `stages[]`, API/ejemplo real en `docs/snapshot-example.json` e instrucciones de entrega en `docs/06-handoff-juanjo.md` §7. Los mapas siguen pendientes de walkthrough JS. Extensiones v2 son explícitas, no suponer que el ejemplo antiguo de un nivel sin etapas es un asset listo para cargar.
 
 **Revisión de L1 integrada y validada (2026-10-10):** `Calibration Chamber` parte de |00⟩ y exige H de Alice, CX de Bob y `run_circuit()` antes de medir. PR #5 fusionado; protocolo completo pasó en Qollab built-in/Forte, incluida apertura para 11 y reset. Snapshot inicial en `docs/snapshot-level1-example.json`; evidencia en handoff06 §9. Falta conectar UI/colisiones y realizar el walkthrough antes de declararse jugable.

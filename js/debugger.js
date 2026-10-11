@@ -101,15 +101,17 @@ export function objectiveText(stage, snap) {
   const bits = Object.keys(win).filter((k) => /^q\d+$/.test(k)).sort();
   let text;
   if (stage?.feed_forward) {
-    const hint = FEED_FORWARD_HINTS[snap?.feed_forward?.phase] ?? FEED_FORWARD_HINTS.prepare_bob;
-    const goal = bits.map((k) => `${PLAYER_BY_QUBIT[Number(k.slice(1))] ?? k} measures ${k} = ${win[k]}`).join(', ');
-    text = goal ? `${hint} Goal: ${goal}.` : hint;
-  } else if (stage?.validation) {
-    text = 'Build Φ⁺ = (|00⟩+|11⟩)/√2, press Space to RUN, then measure both. Matching bits open the doors.';
+    const goal = bits.map((k) => `${PLAYER_BY_QUBIT[Number(k.slice(1))] ?? k} |${win[k]}⟩`).join(', ');
+    text = goal ? `TARGET: ${goal}. Final outcomes: |00⟩ or |01⟩. Classical protocol required.` : 'TARGET: complete the classical correction protocol.';
+  } else if (stage?.validation || win.bell_label) {
+    const target = win.bell_label ?? stage.validation.target_bell;
+    const labels = { 'Phi+': 'Φ⁺', 'Phi-': 'Φ⁻', 'Psi+': 'Ψ⁺', 'Psi-': 'Ψ⁻' };
+    const pair = win.parity === 'different' ? '|01⟩ or |10⟩' : '|00⟩ or |11⟩';
+    text = `TARGET STATE: |${labels[target] ?? target}⟩ before measurement. Final outcomes: ${pair}.`;
   } else if (bits.length) {
     const ket = bits.map((k) => win[k]).join('');
     const per = bits.map((k) => `${PLAYER_BY_QUBIT[Number(k.slice(1))] ?? k} ${k} = ${win[k]}`).join(', ');
-    text = `Target |${ket}⟩: ${per}. Measure both, then reach the exits.`;
+    text = `TARGET: |${ket}⟩. ${per}. Both exits required.`;
   } else if (win.parity) {
     text = `Measure both qubits: the two results must be ${win.parity === 'equal' ? 'equal' : 'different'}. Then reach the exits.`;
   } else text = 'Complete the stage objective, then reach the exits.';
@@ -159,9 +161,9 @@ export function changedBars(prev, next) {
 }
 
 const HINTS = {
-  CIRCUIT_NOT_VALIDATED: 'Build H then CX, then press Space to run.',
-  CIRCUIT_INCOMPLETE: 'Build H then CX, then press Space to run.',
-  INVALID_CIRCUIT: "Circuit isn't Phi+ yet — press R to reset.",
+  CIRCUIT_NOT_VALIDATED: 'The prepared target has not been validated yet.',
+  CIRCUIT_INCOMPLETE: 'The preparation is incomplete. Optional hints are separate from the target.',
+  INVALID_CIRCUIT: 'The prepared state does not match the target. Reset to try again.',
   CIRCUIT_LOCKED: 'Circuit already validated — measure now.',
   VALIDATION_NOT_REQUIRED: 'This stage has no run step.',
   STAGE_FINISHED: 'Stage finished — head to the exits.',
@@ -175,6 +177,11 @@ const HINTS = {
  */
 export function hintFor(code, message, snap = null) {
   if (code === 'STAGE_FINISHED' && snap?.objective?.status === 'failed') return 'Stage failed — press R to retry.';
+  if (code === 'CIRCUIT_NOT_VALIDATED' && snap?.circuit_validation?.mode === 'automatic') {
+    const labels = { 'Phi+': 'Φ⁺', 'Phi-': 'Φ⁻', 'Psi+': 'Ψ⁺', 'Psi-': 'Ψ⁻' };
+    const target = snap.circuit_validation.target_bell;
+    return `Prepare the target |${labels[target] ?? target}⟩ before measurement.`;
+  }
   return HINTS[code] ?? message;
 }
 

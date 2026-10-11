@@ -1,29 +1,30 @@
 {
   "schema_version": 2,
   "id": "level3",
-  "title": "The Core",
+  "title": "The Quantum Core",
   "num_qubits": 2,
   "coordinate_convention": "[row, column], zero-based; map rows are listed top to bottom",
   "theme": "core",
   "integration_status": "requires_qollab_and_gameplay_walkthrough",
-  "integration_notes": "Ten physical map entities: two players, two sensors, two lethal objects, two exits and two plates of the shared CX terminal. Alice H/Z and Bob X are owned HUD controls with their own finite uses and the same engine gate budget, not extra map cells. CX requires both players on the map plates and an interaction key; the HUD cannot trigger it. Sensors are the only entry to each lethal exit lane, so the bridge and laser cannot be bypassed. Both explicit measurements and both spatial exits remain required. Runtime/visual walkthrough is pending.",
-  "design_notes": "Prepare a fresh Phi+ on entry because Level 2 finished measured in 00 or 01, not an entangled state. Canonical solution: CX(0,1) yields Alice|+> Bob|0>, Z(0) yields Alice|-> Bob|0>, H(0) yields game|10>. Z changes relative phase without changing computational-basis probabilities; H converts that phase into a definite bit. Alice's bridge exists for q0=1 and Bob's laser is safe for q1=0; the opposite measured values are lethal. Correct goal requires explicit measurements before completing the exits, not Bell parity. Without gameplay CX, the best ideal success under these resources is one half, not deterministic. The shared debugger communicates classical records; no signalling or experimental Bell-inequality claim. GHZ is out of this delivery.",
+  "integration_notes": "The 15x9 rooms, theme and shared CX cells are preserved. Alice H and Bob Z/H are physical gate monitors: stand on the owned terminal and interact with E/Enter. No H/Z/X hotkey or HUD gate button. D/d unlock after target proof and opposite measurements. Two decorative cable tiles were removed to leave the new monitors unobscured. Runtime/visual walkthrough is pending.",
+  "design_notes": "Prepare the target Bell state before measuring either qubit. The optional hint sequence is H(0), CX(0,1), Z(1), H(0), H(1); equivalent valid circuits are accepted. Measurement parity must be opposite. The shared debugger communicates classical records; no signalling or experimental Bell-inequality claim.",
   "stages": [
     {
       "id": "core",
-      "title": "Disentangle, Phase and Interfere",
-      "initial_circuit": [["h", 0], ["cx", 0, 1]],
-      "gate_set": {"alice": ["h", "z"], "bob": ["x"], "shared": ["cx"]},
+      "title": "The Quantum Core",
+      "initial_circuit": [],
+      "gate_set": {"alice": ["h"], "bob": ["z", "h"], "shared": ["cx"]},
       "max_gates": 5,
-      "win": {"q0": 1, "q1": 0},
+      "win": {"bell_label": "Psi+", "parity": "different"},
       "required_measurements": [0, 1],
       "failure_policy": "death",
+      "validation": {"mode": "automatic", "target_bell": "Psi+"},
       "map": [
         "###############",
         "#......#......#",
         "#.A....#....B.#",
-        "#......#......#",
-        "#.....C#c.....#",
+        "#..H...#..Z...#",
+        "#.....C#c..h..#",
         "#S#....#....#s#",
         "#D#....#....#d#",
         "#E#....#....#e#",
@@ -33,18 +34,19 @@
         "#": "wall", ".": "floor",
         "A": "alice_start", "B": "bob_start",
         "S": "sensor_q0", "s": "sensor_q1",
+        "H": "alice_h", "Z": "bob_z", "h": "bob_h",
         "C": "shared_cx", "c": "shared_cx_target",
         "D": "bridge_A", "d": "laser_B",
         "E": "exit_A", "e": "exit_B"
       },
       "objects": {
-        "bridge_A": {"type": "conditional_lethal_bridge", "qubit": 0, "open_on": 1, "lethal": true},
-        "laser_B": {"type": "conditional_lethal_laser", "qubit": 1, "open_on": 0, "lethal": true}
+        "bridge_A": {"type": "validated_exit", "qubit": 0, "unlock_when": "objective_ready", "blocking": true},
+        "laser_B": {"type": "validated_exit", "qubit": 1, "unlock_when": "objective_ready", "blocking": true}
       },
       "terminals": [
-        {"id": "alice_h", "placement": "hud", "gate": "h", "owner": "alice", "qubit": 0, "uses": 2},
-        {"id": "alice_z", "placement": "hud", "gate": "z", "owner": "alice", "qubit": 0, "uses": 1},
-        {"id": "bob_x", "placement": "hud", "gate": "x", "owner": "bob", "qubit": 1, "uses": 1},
+        {"id": "alice_h", "cell": [3, 3], "gate": "h", "owner": "alice", "qubit": 0, "uses": 2},
+        {"id": "bob_z", "cell": [3, 10], "gate": "z", "owner": "bob", "qubit": 1, "uses": 1},
+        {"id": "bob_h", "cell": [4, 11], "gate": "h", "owner": "bob", "qubit": 1, "uses": 1},
         {"id": "shared_cx", "cell": [4, 6], "target_cell": [4, 8], "gate": "cx", "owner": "shared", "qubit": 0, "target": 1, "uses": 1}
       ],
       "decorations": [
@@ -52,7 +54,6 @@
         {"sprite": "capacitor_bank", "cell": [1, 3], "footprint": [2, 2]},
         {"sprite": "heat_sink", "cell": [1, 5], "footprint": [2, 2]},
         {"sprite": "floor_cable_h", "cell": [3, 2], "footprint": [1, 1]},
-        {"sprite": "floor_cable_h", "cell": [3, 3], "footprint": [1, 1]},
         {"sprite": "floor_cable_h", "cell": [3, 4], "footprint": [1, 1]},
         {"sprite": "floor_cable_cross", "cell": [3, 5], "footprint": [1, 1]},
         {"sprite": "floor_cable_plug", "cell": [3, 6], "footprint": [1, 1]},
@@ -64,7 +65,6 @@
         {"sprite": "fan_a", "cell": [1, 10], "footprint": [2, 2]},
         {"sprite": "dip_switches", "cell": [1, 12], "footprint": [2, 1]},
         {"sprite": "floor_cable_h", "cell": [3, 9], "footprint": [1, 1]},
-        {"sprite": "floor_cable_h", "cell": [3, 10], "footprint": [1, 1]},
         {"sprite": "floor_cable_h", "cell": [3, 11], "footprint": [1, 1]},
         {"sprite": "floor_cable_frayed_a", "cell": [3, 12], "footprint": [1, 1]},
         {"sprite": "capacitor_pile", "cell": [3, 13], "footprint": [1, 1]},
@@ -75,12 +75,12 @@
         {"sprite": "beacon_off", "cell": [2, 8], "footprint": [1, 1]}
       ],
       "narration": {
-        "enter": "Disentangle together on the CX plates.\nThen use Alice's Z and H controls.",
-        "first_gate": "Z changes phase, not probabilities.\nH turns that phase into Alice's bit.",
-        "first_measure": "Target bits: Alice=1 and Bob=0.\nMeasured qubits cannot take gates.",
-        "death": "Wrong bridge or laser bit is lethal.\nReset prepares a fresh Bell pair.",
+        "enter": "Prepare Psi+ before measuring.\nOpposite bits open both exits.",
+        "first_gate": "Build a valid Bell state.\nEquivalent circuits are accepted.",
+        "first_measure": "Measure both qubits.\nTheir bits must differ.",
+        "death": "The exits require proof and\nboth opposite measurements.",
         "glitch": "Backend data disagrees with ideal.\nSee the sampling diagnostics.",
-        "win": "Interference prepared |10>.\nCross the safe lanes to both exits."
+        "win": "Psi+ proof confirmed.\nCross both opened exits."
       }
     }
   ]

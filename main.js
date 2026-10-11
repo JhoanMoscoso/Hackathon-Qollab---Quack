@@ -14,6 +14,7 @@ import { createRenderer } from './js/render.js';
 import { fitCanvas, debounce } from './js/layout.js';
 import { createDebugger, describeChange, hintFor, FEED_FORWARD_HINTS } from './js/debugger.js';
 import { renderTitle } from './js/title.js';
+import { createTransitionView } from './js/transition.js';
 import { renderGateGuide } from './js/gate_guide.js';
 import { loadSprites } from './js/sprite_loader.js';
 import { withTimeout } from './js/async_util.js';
@@ -21,6 +22,13 @@ import { createAudio, trackForLevel, gateSfx } from './js/audio.js';
 
 /* global backend -- Qollab provides the quantum backend as a global; dev/index.html defines a stub. */
 const DEFAULT_LEVEL = 'level1';
+const CAMPAIGN = ['level1', 'level2', 'level3'];
+const TRANSITION_MS = 2200;
+const ARRIVAL = {
+  level1: ['Calibration Chamber', 'The register awaits calibration.'],
+  level2: ['Bell Block', 'A classical bit connects the two rooms.'],
+  level3: ['The Quantum Core', 'A phase-bound register awaits stabilization.'],
+};
 const DEATH_MS = 1000;
 const RETRY_MS = 1000; // how long a failed retry_stage result stays visible before the stage resets
 const PRECOMPUTE_SHOTS = 200;
@@ -33,7 +41,7 @@ const NOTES = {
   cnot_needs_both: 'CNOT needs Alice on the control and Bob on the target.',
   superposition: 'Blocked: that door is in superposition.',
   closed: 'Blocked: that door is closed.',
-  measurement_locked: 'Sensors are locked. Build H then CX, then press Space to run.',
+  measurement_locked: 'Sensors are locked until the target preparation is validated.',
 };
 
 const canvas = $('canvas');
@@ -47,6 +55,7 @@ const reduceBox = $('reduce-motion');
 reduceBox.checked = !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 document.body.classList.toggle('reduce-motion', reduceBox.checked); // CSS stops the title animation with it
 const renderer = createRenderer(canvas, { reduceMotion: reduceBox.checked });
+const transitionView = createTransitionView($('level-transition'));
 
 // ---------- canvas fit ----------
 // The board cell (CSS decides its size) holds the canvas, which CSS cannot size to "largest box of the map's aspect
@@ -80,24 +89,39 @@ let precomputeStarted = false;
 let epoch = 0;          // bumped on every state change and level reset; async results from an older epoch are dropped
 let deathTimer = null;
 let pending = [];       // non-move intents that arrived while an engine call was in flight
+let sceneTransition = null;
+let engineQueue = Promise.resolve();
 const PENDING_CAP = 4;
 
 // ---------- engine ----------
 /** Returns the parsed result, or null on error (then `lastError` is set). Never touches game state itself. */
 async function call(name, ...args) {
-  try {
-    const out = JSON.parse(await engine[name].callPromising(...args));
-    if (out?.error) throw Object.assign(new Error(out.error), { code: out.code });
-    lastError = null;
-    return out;
-  } catch (e) {
-    lastError = hintFor(e?.code, String(e?.message ?? e), snap);
-    refresh();
-    return null;
-  }
+  const requestedEpoch = epoch;
+  const invoke = async () => {
+    try {
+      const out = JSON.parse(await engine[name].callPromising(...args));
+      if (out?.error) throw Object.assign(new Error(out.error), { code: out.code });
+      if (requestedEpoch === epoch) lastError = null;
+      return out;
+    } catch (e) {
+      if (requestedEpoch === epoch) {
+        lastError = hintFor(e?.code, String(e?.message ?? e), snap);
+        refresh();
+      }
+      return null;
+    }
+  };
+  // Session-changing calls remain ordered even if Esc cancels their old UI.
+  // The long initial backend job is independent, so local fallback can still start after its timeout.
+  if (name === 'precompute') return invoke();
+  const queued = engineQueue.then(invoke);
+  engineQueue = queued.then(() => undefined, () => undefined);
+  return queued;
 }
 /** `prev` = the snapshot before the action that produced `snap`: the debugger highlights the bars that changed. */
 function refreshProtocolConsole() {
+  const blocked = busy || sm.state !== STATES.LEVEL;
+  $('reset-btn').disabled = blocked;
   const protocol = snap?.feed_forward;
   const consoleEl = $('classical-console');
   consoleEl.hidden = !protocol;
@@ -105,25 +129,9 @@ function refreshProtocolConsole() {
     $('protocol-hint').textContent = FEED_FORWARD_HINTS[protocol.phase] ?? 'Follow the Bell Block protocol.';
     const value = snap.classical_channel?.received ? String(snap.classical_channel.value) : 'hidden until Alice receives the bit';
     $('classical-value').lastElementChild.textContent = value;
-    $('send-bit').disabled = busy || protocol.phase !== 'send_bit';
-    $('receive-bit').disabled = busy || protocol.phase !== 'receive_bit';
-    $('keep-identity').disabled = busy || protocol.phase !== 'correct_alice' || protocol.required_correction !== 'i';
-  }
-  const core = $('core-console');
-  const isCore = level?.id === 'level3';
-  core.hidden = !isCore;
-  if (isCore) {
-    const stage = level.stages?.[snap?.stage_index ?? 0];
-    const terminals = new Map((stage?.terminals ?? []).filter((t) => t.placement === 'hud').map((t) => [t.id, t]));
-    const controls = [
-      ['core-h', 'alice_h', 0], ['core-z', 'alice_z', 0], ['core-x', 'bob_x', 1],
-    ];
-    for (const [buttonId, id, qubit] of controls) {
-      const terminal = terminals.get(id);
-      const left = snap?.terminal_uses_left?.[id] ?? terminal?.uses ?? 0;
-      $(buttonId).disabled = busy || !terminal || left <= 0 || snap?.gates_left <= 0
-        || snap?.measured?.[qubit] != null || snap?.objective?.status !== 'pending';
-    }
+    $('send-bit').disabled = blocked || protocol.phase !== 'send_bit';
+    $('receive-bit').disabled = blocked || protocol.phase !== 'receive_bit';
+    $('keep-identity').disabled = blocked || protocol.phase !== 'correct_alice' || protocol.required_correction !== 'i';
   }
 }
 
@@ -131,13 +139,24 @@ function refreshProtocolConsole() {
 const currentStage = () => level?.stages?.[snap?.stage_index ?? 0] ?? null;
 
 const HUD_HINT_BASE = 'Move: WASD / Arrows · E / Enter: use terminal · Space: run circuit · Tab: switch (1P) · R: reset stage · M: mute · Esc: menu';
-const HUD_HINT_EXTRA = { level2: ' · B: send bit · V: receive bit · I: keep (identity)', level3: ' · H / Z / X: gates from the HUD' };
+const HUD_HINT_EXTRA = { level2: ' · B: send bit · V: receive bit · I: keep (identity)' };
 const setHudHint = (levelId) => { $('hud-hint').textContent = HUD_HINT_BASE + (HUD_HINT_EXTRA[levelId] ?? ''); };
 
 const refresh = (note = null, prev = null) => {
   if (world && snap) syncTerminalUses(world, snap); // engine is the source of truth for terminal uses
   refreshProtocolConsole();
   dbg.update(snap, { lastMeasure, note, error: lastError, prev, stage: currentStage() });
+  const hints = currentStage()?.hints ?? [];
+  const hintList = $('stage-hint-list');
+  const hintStage = `${level?.id}:${snap?.stage_index ?? 0}`;
+  if (hintList.dataset.stage !== hintStage) {
+    hintList.replaceChildren(...hints.map((text) => {
+      const item = document.createElement('li'); item.textContent = text; return item;
+    }));
+    hintList.dataset.stage = hintStage;
+    $('stage-hints').open = false;
+  }
+  $('stage-hints').hidden = hints.length === 0;
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -178,8 +197,9 @@ function showMenuError(msg) {
 }
 
 // ---------- screens / state ----------
-const SCREENS = { loading: 'loading', menu: 'menu', level: 'game', dead: 'game', win: 'game' };
-const focusTarget = () => (SCREENS[sm.state] === 'game' ? canvas : $(sm.state === 'menu' ? 'menu-title' : 'loading'));
+const SCREENS = { loading: 'loading', menu: 'menu', level: 'game', dead: 'game', win: 'game', transition: 'game', finale: 'finale' };
+const focusTarget = () => (SCREENS[sm.state] === 'game' ? canvas
+  : $(sm.state === 'menu' ? 'menu-title' : sm.state === 'finale' ? 'finale-title' : 'loading'));
 
 const sm = createStateMachine({
   initial: STATES.LOADING,
@@ -189,10 +209,19 @@ const sm = createStateMachine({
     if (next !== 'dead') { clearTimeout(deathTimer); deathTimer = null; }
     for (const id of new Set(Object.values(SCREENS))) $(id).hidden = id !== SCREENS[next];
     overlay = next === 'dead' || next === 'win' ? next : null;
+    if (next !== STATES.TRANSITION && sceneTransition) {
+      const cancelled = sceneTransition;
+      sceneTransition = null;
+      transitionView.hide(); canvas.style.opacity = '1';
+      cancelled.resolve();
+    }
+    if (next === STATES.TRANSITION || next === STATES.FINALE) { input?.dispose(); input = null; }
     if (next === 'menu') { input?.dispose(); input = null; audio.playMusic('menu'); }
+    if (next === STATES.FINALE) audio.playMusic('menu');
     if (next === 'level') showMenuError(null);
     if (SCREENS[next] === 'game') fitCanvasToBoard(true);
     focusTarget().focus();
+    refreshProtocolConsole();
   },
 });
 
@@ -201,14 +230,14 @@ function newInput() {
   input = createInput(window, { mode });
 }
 
-async function startGame(chosen) {
+async function startGame(chosen, requestedLevel = null) {
   if (busy) return;
   busy = true;
   showMenuError(null);
   try {
     mode = chosen;
     const ep = epoch;
-    const id = document.querySelector('input[name="level"]:checked')?.value ?? DEFAULT_LEVEL;
+    const id = requestedLevel ?? document.querySelector('input[name="level"]:checked')?.value ?? DEFAULT_LEVEL;
     const lvl = await loadLevelCached(id);
     if (ep !== epoch) return;
     if (!lvl) { showMenuError(lastError); return; }
@@ -283,25 +312,87 @@ async function handleFailure(ep) {
   await resetStage('Results differ. Stage reset.');
 }
 
-/** Both players on their exits with a ready objective: next stage, or the win screen on the last one. */
+/** The only completion entry: a real quantum objective AND both spatial exits. */
 async function handleComplete(ep) {
+  if (sm.state !== STATES.LEVEL || ep !== epoch || sceneTransition) return;
   const done = snap.stage_index ?? 0;
-  if (done < (snap.stage_count ?? 1) - 1) {
-    const s = await call('advance_stage');
-    if (ep !== epoch || !s) return;
-    audio.play('win');
-    epoch++; pending = []; // the old world is gone: drop everything still in flight
-    snap = s; lastMeasure = null;
-    try { buildWorld(); } catch (e) { sm.setState(STATES.MENU); showMenuError(e.message); return; }
-    newInput();
-    renderGateGuide($('gate-guide'), currentStage());
-    refresh(`Stage ${done + 1} complete. Stage ${done + 2}: ${level.stages?.[snap.stage_index]?.title ?? ''}`);
-    return;
+  const nextStage = done + 1 < (snap.stage_count ?? 1);
+  const campaignIndex = CAMPAIGN.indexOf(level.id);
+  const ending = !nextStage && campaignIndex === CAMPAIGN.length - 1;
+  const nextId = nextStage ? level.id : CAMPAIGN[campaignIndex + 1];
+  if (campaignIndex < 0 || (!ending && !nextId)) {
+    sm.setState(STATES.MENU); showMenuError('Unknown campaign destination.'); return;
   }
   overlayMessage = undefined;
   audio.play('win');
-  sm.setState(STATES.WIN);
-  refresh('Level complete. Press Enter to return to the menu.');
+  sm.setState(STATES.TRANSITION);
+  let resolve;
+  const completed = new Promise((doneTransition) => { resolve = doneTransition; });
+  const destination = nextStage ? level.stages?.[done + 1]?.title : ARRIVAL[nextId]?.[0];
+  const scene = {
+    epoch, startedAt: performance.now(), duration: reduceBox.checked ? 160 : TRANSITION_MS,
+    ending, nextStage, nextId, ready: ending, swapped: false, resolve,
+  };
+  sceneTransition = scene;
+  transitionView.show({ title: ending ? 'Quack' : destination,
+    message: ending ? 'The Quantum Core is stable. Both paths are complete.' : ARRIVAL[nextId]?.[1], ending });
+  $('transition-title').classList.toggle('quack-title', ending);
+  if (ending) renderTitle($('transition-title'));
+  $('transition-title').tabIndex = -1;
+  $('transition-title').focus();
+  $('a11y-live').textContent = ending ? 'Quantum Core complete. Closing the campaign.' : `Level complete. Entering ${destination}.`;
+  if (!ending) prepareArrival(scene);
+  await completed; // the frame loop owns timing; no timer or new backend job
+}
+
+async function prepareArrival(scene) {
+  const active = () => sceneTransition === scene && scene.epoch === epoch && sm.state === STATES.TRANSITION;
+  try {
+    const nextLevel = scene.nextStage ? level : await loadLevelCached(scene.nextId);
+    if (!active()) return;
+    if (!nextLevel) throw new Error(lastError ?? 'Next level could not be loaded.');
+    const nextSnapshot = await call(scene.nextStage ? 'advance_stage' : 'new_session', ...(scene.nextStage ? [] : [scene.nextId]));
+    if (!active()) return;
+    if (!nextSnapshot) throw new Error(lastError ?? 'Next register could not be prepared.');
+    scene.next = { level: nextLevel, snap: nextSnapshot };
+    scene.ready = true;
+  } catch (error) {
+    if (!active()) return;
+    sm.setState(STATES.MENU); showMenuError(error.message);
+  }
+}
+
+function updateTransition(t) {
+  const scene = sceneTransition;
+  if (!scene || scene.epoch !== epoch || sm.state !== STATES.TRANSITION) return;
+  const reduced = reduceBox.checked;
+  const duration = reduced ? 160 : scene.duration;
+  const progress = Math.min(1, Math.max(0, (t - scene.startedAt) / duration));
+  if (!scene.ending && scene.ready && !scene.swapped && (progress >= 0.7 || reduced)) {
+    try {
+      level = scene.next.level; snap = scene.next.snap;
+      lastMeasure = null; lastError = null;
+      buildWorld(); scene.swapped = true;
+      setHudHint(level.id);
+      renderGateGuide($('gate-guide'), currentStage());
+      audio.playMusic(trackForLevel(level.id));
+      refresh();
+    } catch (error) { sm.setState(STATES.MENU); showMenuError(error.message); return; }
+  }
+  const displayProgress = scene.ready ? progress : Math.min(progress, 0.7);
+  const { mapOpacity } = transitionView.update(displayProgress, t, reduced);
+  canvas.style.opacity = String(scene.swapped ? (reduced ? 1 : Math.max(0, (progress - 0.7) / 0.3)) : mapOpacity);
+  if (progress < 1 || !scene.ready) return;
+  sceneTransition = null;
+  transitionView.hide(); canvas.style.opacity = '1';
+  if (scene.ending) {
+    sm.setState(STATES.FINALE); // no level4 and no restart of level3
+  } else {
+    newInput();
+    sm.setState(STATES.LEVEL);
+    refresh(`${level.title} — register ready.`);
+  }
+  scene.resolve();
 }
 
 async function runIntent(intent, ep) {
@@ -318,11 +409,7 @@ async function runIntent(intent, ep) {
     snap = result.snapshot ?? result;
     refresh(intent.action === 'send_bit' ? 'Bob sent the classical bit.' : intent.action === 'receive_bit' ? 'Alice received the classical bit.' : 'Alice kept the identity correction.', prev);
     events = sensorsUnderPlayers(world, snap);
-  } else if (intent.type === 'core-gate') {
-    const { gate, qubit, terminalId, actor } = intent;
-    events = [{ type: 'gate', gate, qubit, target: -1, terminalId, actor, terminal: null }];
-  } else
-  if (intent.type === 'run') { // RUN CIRCUIT: the engine validates the prepared state; errors show in the debugger
+  } else if (intent.type === 'run') { // RUN CIRCUIT: the engine validates the prepared state; errors show in the debugger
     const prev = snap;
     const s = await call('run_circuit');
     if (ep !== epoch || !s) return;
@@ -386,13 +473,6 @@ function queueProtocol(action) {
   else runIntents([intent]);
 }
 
-function queueCoreGate(gate, qubit, terminalId, actor) {
-  if (sm.state !== 'level' || level?.id !== 'level3' || pending.length >= PENDING_CAP) return;
-  const intent = { type: 'core-gate', gate, qubit, terminalId, actor };
-  if (busy) pending.push(intent);
-  else runIntents([intent]);
-}
-
 async function runIntents(intents) {
   busy = true;
   refreshProtocolConsole();
@@ -407,6 +487,7 @@ async function runIntents(intents) {
 
 function frame(t) {
   requestAnimationFrame(frame);
+  updateTransition(t);
   if (sm.state === 'level' && input) {
     const intents = input.poll();
     if (busy) { // keep a few interact/switch intents for later; moves are dropped (held keys repeat anyway)
@@ -427,16 +508,11 @@ window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
   const s = sm.state;
   // Esc works even while an engine call is in flight: the epoch guard drops its late result.
-  if (e.code === 'Escape' && (s === 'level' || s === 'dead' || s === 'win')) sm.setState(STATES.MENU);
+  if (e.code === 'Escape' && ['level', 'dead', 'win', 'transition', 'finale'].includes(s)) sm.setState(STATES.MENU);
   else if (e.code === 'KeyM' && s !== 'menu' && s !== 'loading') toggleSound();
   else if (s === 'level' && snap?.feed_forward && ['KeyB', 'KeyV', 'KeyI'].includes(e.code)) {
     e.preventDefault();
     queueProtocol({ KeyB: 'send_bit', KeyV: 'receive_bit', KeyI: 'identity' }[e.code]);
-  }
-  else if (s === 'level' && level?.id === 'level3' && ['KeyH', 'KeyZ', 'KeyX'].includes(e.code)) {
-    e.preventDefault();
-    const action = { KeyH: ['h', 0, 'alice_h', 'alice'], KeyZ: ['z', 0, 'alice_z', 'alice'], KeyX: ['x', 1, 'bob_x', 'bob'] }[e.code];
-    queueCoreGate(...action);
   }
   else if (busy) return;
   else if (s === 'level' && e.code === 'KeyR') restartStage();
@@ -459,9 +535,15 @@ for (const radio of document.querySelectorAll('input[name="level"]')) radio.addE
 $('send-bit').addEventListener('click', () => queueProtocol('send_bit'));
 $('receive-bit').addEventListener('click', () => queueProtocol('receive_bit'));
 $('keep-identity').addEventListener('click', () => queueProtocol('identity'));
-$('core-h').addEventListener('click', () => queueCoreGate('h', 0, 'alice_h', 'alice'));
-$('core-z').addEventListener('click', () => queueCoreGate('z', 0, 'alice_z', 'alice'));
-$('core-x').addEventListener('click', () => queueCoreGate('x', 1, 'bob_x', 'bob'));
+$('final-menu').addEventListener('click', () => {
+  if (sm.state === STATES.FINALE) sm.setState(STATES.MENU);
+});
+$('play-again').addEventListener('click', () => {
+  if (sm.state !== STATES.FINALE || busy) return;
+  document.querySelector('input[name="level"][value="level1"]').checked = true;
+  sm.setState(STATES.MENU);
+  startGame(mode, DEFAULT_LEVEL);
+});
 reduceBox.addEventListener('change', () => {
   renderer.setReduceMotion(reduceBox.checked);
   document.body.classList.toggle('reduce-motion', reduceBox.checked);
@@ -473,6 +555,7 @@ $('reset-btn').addEventListener('click', () => {
 
 renderTitle($('loading-title'));
 renderTitle($('menu-title'));
+renderTitle($('finale-title')); // exact same SVG builder and CSS treatment, not a copy of the logo
 
 (async () => {
   requestAnimationFrame(frame);

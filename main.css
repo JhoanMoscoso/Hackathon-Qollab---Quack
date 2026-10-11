@@ -52,7 +52,7 @@ button:hover { border-color: var(--alice); }
 
 /* ---------- "Quack" pixel title (js/title.js builds the SVG). The Q glitches like a qubit in superposition: faint
    ghost copies flicker around it. Everything animates only without reduced motion (OS setting or the menu box). */
-.quack-title { margin: 0 0 12px; line-height: 0; }
+.quack-title { margin: 0 0 12px; line-height: 0; width: min(100%, 21rem); }
 .quack-svg { display: block; width: min(100%, 21rem); height: auto; overflow: visible; animation: quack-float 4s ease-in-out infinite; }
 .quack-svg .letter { fill: var(--text); }
 .quack-svg .q { fill: var(--super); animation: q-flicker 3.2s steps(1) infinite; }
@@ -97,12 +97,42 @@ body.reduce-motion .quack-svg .q-ghost { display: none; }
 .controls { color: var(--muted); padding-left: 20px; max-width: 70ch; }
 .controls strong { color: var(--text); }
 
+/* Menu and finale remain content-sized and scroll naturally on short viewports. */
+#menu, .screen-composition {
+  min-height: max(0px, calc(100dvh - 5rem));
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  width: min(100%, 48rem); margin-inline: auto; padding-block: clamp(16px, 5vh, 56px);
+}
+#menu[hidden], .screen-composition[hidden] { display: none; }
+#menu > *, .screen-composition > * { max-width: 100%; }
+#menu .level-select { width: min(100%, 28rem); }
+#menu .controls { margin-bottom: 0; }
+#menu > .hint, #finale > .hint { text-align: center; }
+#menu .controls, #menu .level-select { text-align: left; }
+#menu .menu-actions, #finale .menu-actions { justify-content: center; }
+#menu .check + .check { margin-left: 0; margin-top: 6px; }
+#play-again { border-color: var(--alice); }
+#final-menu { border-color: var(--bob); }
+
+.stage-hints { color: var(--muted); border-top: 1px solid var(--border); padding-top: 8px; font-size: 0.85rem; }
+.stage-hints summary { color: var(--text); cursor: pointer; font-weight: 600; }
+.stage-hints ul { padding-left: 20px; }
+
+.level-transition { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; padding: clamp(12px, 4vw, 32px); background: rgb(14 17 22 / 78%); }
+.transition-card { width: min(100%, 32rem); padding: clamp(16px, 4vw, 28px); text-align: center; background: var(--panel); border: 2px solid var(--border); border-radius: 6px; }
+.transition-card h2 { margin-bottom: 8px; }
+.transition-card .quack-title { margin-inline: auto; }
+.transition-card p { min-height: 1.5em; color: var(--muted); }
+#transition-effect { display: block; width: 100%; height: clamp(48px, 15vw, 96px); image-rendering: pixelated; }
+body.reduce-motion #transition-effect { display: none; }
+
 #load-status { font-size: 1.1rem; }
 
 /* ---------- game screen ----------
    Wide: the page is one viewport-sized grid: [board | state panel] over [circuit panel], no page scrollbars.
    Narrow (or very short): stacked board, state panel, circuit panel; the page scrolls vertically only. */
 #game { display: flex; flex-direction: column; gap: 12px; }
+#game { position: relative; }
 
 .board { position: relative; width: 100%; aspect-ratio: var(--board-w, 640) / var(--board-h, 384); min-width: 0; } /* main.js sets --board-w/h to the map's px size */
 #canvas {
@@ -113,13 +143,13 @@ body.reduce-motion .quack-svg .q-ghost { display: none; }
   image-rendering: pixelated;
 }
 
-#debugger-state, .bottom-panel, #classical-console, #core-console {
+#debugger-state, .bottom-panel, #classical-console {
   background: var(--panel); border: 2px solid var(--border); border-radius: 6px;
   font-family: var(--mono); font-size: 0.9rem; min-width: 0;
 }
 #debugger-state { padding: 12px 16px; display: flex; flex-direction: column; }
-#debugger-body { flex: 1 1 auto; min-height: 0; }
-.dbg-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 6px; }
+#debugger-body { flex: 0 0 auto; min-height: auto; overflow-wrap: anywhere; }
+.dbg-head { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 6px; }
 .dbg-head .dbg-title { margin: 0; }
 /* Yellow reset button: dark text on --focus (13:1), hard pixel border and shadow, white focus ring (yellow on yellow would vanish). */
 #reset-btn {
@@ -140,6 +170,7 @@ body.reduce-motion .quack-svg .q-ghost { display: none; }
 .dbg-goal-text { margin: 0; line-height: 1.35; overflow-wrap: anywhere; }
 
 .side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.side > :not(#debugger-state) { flex-shrink: 0; }
 .side > #debugger-state { flex: 1 1 auto; }
 
 /* Gate guide: a strip of cards that scrolls sideways (keyboard: focus the box, then the left / right arrows). */
@@ -155,12 +186,11 @@ body.reduce-motion .quack-svg .q-ghost { display: none; }
 .gg-text code { color: var(--super); font-family: var(--mono); overflow-wrap: anywhere; }
 .gg-text span { color: var(--muted); }
 #classical-console { padding: 12px 16px; }
-#core-console { padding: 12px 16px; }
 .protocol-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .protocol-actions button { padding: 8px 12px; }
 .bottom-panel { display: flex; flex-direction: column; padding: 8px 16px 6px; }
 #debugger-circuit { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
-.hud-hint { margin: 12px 0 0; padding-top: 8px; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.8rem; line-height: 1.3; flex: none; }
+.hud-hint { margin: 12px 0 0; padding-top: 8px; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.8rem; line-height: 1.5; flex: 0 0 auto; overflow-wrap: anywhere; }
 
 @media (min-width: 900px) and (min-height: 480px) {
   body:has(#game:not([hidden])) {
@@ -174,9 +204,9 @@ body.reduce-motion .quack-svg .q-ghost { display: none; }
     grid-template-rows: minmax(0, 1fr) clamp(110px, 18dvh, 240px);
   }
   .board { grid-column: 1; grid-row: 1; width: auto; aspect-ratio: auto; min-height: 0; }
-  .side { grid-column: 2; grid-row: 1; min-height: 0; gap: 10px; }
+  .side { grid-column: 2; grid-row: 1; min-height: 0; gap: 10px; overflow-y: auto; }
   #debugger-state { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-  #classical-console, #core-console { flex: none; }
+  #classical-console { flex: none; }
   .bottom-panel { grid-column: 1; grid-row: 2; min-height: 0; border-bottom: 0; border-radius: 6px 6px 0 0; }
   #gate-guide { grid-column: 2; grid-row: 2; min-height: 0; border-bottom: 0; border-radius: 6px 6px 0 0; }
   body:has(#game:not([hidden])) #credits {
@@ -217,9 +247,9 @@ body.reduce-motion .quack-svg .q-ghost { display: none; }
 .c-run { stroke: var(--super); stroke-width: 2; stroke-dasharray: 4 3; }
 .c-run-text { fill: var(--super); font: bold 9px var(--mono); }
 
-.dbg-stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 12px 0 0; }
-.dbg-stats dt { color: var(--muted); }
-.dbg-stats dd { margin: 0; }
+.dbg-stats { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 12px; margin: 12px 0 0; line-height: 1.5; }
+.dbg-stats dt { color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
+.dbg-stats dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .dbg-msg { min-height: 1.5em; margin: 8px 0 0; color: var(--text); }
 .dbg-msg.is-error { color: var(--error); }
 

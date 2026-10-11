@@ -106,16 +106,26 @@ class Engine:
             circuit_status = ("complete" if status == "ready" else "failed" if status == "failed"
                               else "measuring" if any(bit is not None for bit in position.measured)
                               else "validated" if validated else "building")
+            allowed = []
+            for q, bit in enumerate(position.measured):
+                try:
+                    rules.check_measurement(stage, position, q)
+                except rules.RuleError:
+                    allowed.append(False)
+                else:
+                    allowed.append(bit is None)
             unlocked = validated and status == "ready"
             snapshot.update({
                 "circuit_validation": {"required": True, "validated": validated,
                     "status": circuit_status, **deepcopy(stage["validation"])},
-                "measurement_enabled": validated and status == "pending",
+                "measurement_enabled": any(allowed),
                 "exits_unlocked": unlocked,
                 "door_states": {name: "open" if unlocked else "closed"
                                 for name, obj in stage["objects"].items()
                                 if obj.get("type") == "validated_exit"},
             })
+            if stage["validation"].get("mode", "manual") == "automatic":
+                snapshot["measurement_allowed"] = allowed
         if "feed_forward" in stage:
             phase = position.feed_forward_phase
             sent = phase in {"receive_bit", "correct_alice", "measure_alice", "complete"}
@@ -240,7 +250,7 @@ class Engine:
         except rules.RuleError as error:
             return encode(error_payload(error))
 
-    def _packed_keys(self, levels):
+    def _packed_keys(self, levels, catalog):
         """Ten priority pairs cover intended routes and both winning Bell branches."""
         # L1 no longer auto-prepares Bell or has two stages. Use L2's reference;
         # priorities are physical families, independent of a level's stage count.
@@ -250,7 +260,11 @@ class Engine:
         states.extend([bell, psi_plus, evolve_gate(bell, "z", 0), evolve_gate(psi_plus, "z", 0)])
         plus_zero = evolve_gate(bell, "cx", 0, 1)
         states.extend([plus_zero, evolve_gate(plus_zero, "z", 0)])
-        return list(dict.fromkeys(canonical_key(sv) for sv in states))
+        priorities = [key for key in dict.fromkeys(canonical_key(sv) for sv in states) if key in catalog]
+        # New gate sets can remove an old priority family: fill from the real catalog,
+        # not nonexistent keys, while retaining the ten-pair cap and single job.
+        priorities.extend(key for key in sorted(catalog) if key not in priorities)
+        return priorities[:10]
 
     async def precompute(self, backend=None, shots=200, strategy="packed"):
         try:
@@ -261,7 +275,7 @@ class Engine:
             catalog = campaign_catalog(levels)
             bell = rules.start(levels[1]["stages"][0])
             return encode(await self.sampling.precompute(backend, catalog, shots, strategy,
-                                                        canonical_key(bell.sv), self._packed_keys(levels)))
+                                                        canonical_key(bell.sv), self._packed_keys(levels, catalog)))
         except (ValueError, TypeError, OSError) as error:
             return encode(error_payload(error, "PRECOMPUTE_FAILED"))
 

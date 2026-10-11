@@ -7,7 +7,7 @@ import { tileRect, propRect } from './theme.js';
 export const GATE_GUIDE = {
   h: {
     name: 'H · Hadamard', short: 'H', sprite: { tile: 'term_h' },
-    example: 'H|0⟩ = |+⟩ = (|0⟩+|1⟩)/√2', description: 'Puts a qubit into an equal superposition.',
+    example: 'H|0⟩ = |+⟩ = (|0⟩+|1⟩)/√2', description: 'Mixes 0 and 1 amplitudes: a basis change.',
   },
   x: {
     name: 'X · NOT', short: 'X', sprite: { tile: 'term_x' },
@@ -19,7 +19,7 @@ export const GATE_GUIDE = {
   },
   cx: {
     name: 'CX · CNOT', short: 'CX', sprite: { prop: 'qubit_chip_a' },
-    example: 'CX|10⟩ = |11⟩, CX|+0⟩ = Φ⁺', description: 'Flips the target if the control is 1: entangles.',
+    example: 'CX|10⟩ = |11⟩, CX|+0⟩ = Φ⁺', description: 'Flips the target for control 1; can create or remove entanglement.',
   },
   i: {
     name: 'I · Keep', short: 'I', sprite: { tile: 'term_cx_owner' },

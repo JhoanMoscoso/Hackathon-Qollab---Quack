@@ -25,6 +25,7 @@ class Position:
     circuit_validated: bool = False
     preparation_history: tuple[tuple, ...] | None = None
     feed_forward_phase: str | None = None
+    validation_proof: str | None = None
 
 
 def start(stage: dict, num_qubits: int = 2) -> Position:
@@ -38,8 +39,13 @@ def start(stage: dict, num_qubits: int = 2) -> Position:
 
 
 def objective(stage: dict, position: Position) -> str:
-    if "validation" in stage and not position.circuit_validated:
-        return "pending"
+    if "validation" in stage:
+        validation = stage["validation"]
+        if (not position.circuit_validated
+                or position.validation_proof != validation["target_bell"]):
+            if validation.get("mode", "manual") == "automatic" and any(bit is not None for bit in position.measured):
+                return "failed"  # A premature measurement consumes the unprepared core.
+            return "pending"
     if "feed_forward" in stage and position.feed_forward_phase != "complete":
         return "pending"
     measured = position.measured
@@ -62,7 +68,7 @@ def objective(stage: dict, position: Position) -> str:
 def logical_key(position: Position):
     return (canonical_key(position.sv), position.measured, position.gates_used,
             position.uses_left, position.circuit_validated, position.preparation_history,
-            position.feed_forward_phase)
+            position.feed_forward_phase, position.validation_proof)
 
 
 def _protocol_actor(stage, actor, expected):
@@ -118,6 +124,10 @@ def run_circuit(stage: dict, position: Position) -> Position:
         return position
     if any(bit is not None for bit in position.measured):
         raise RuleError("QUBIT_ALREADY_MEASURED", "Reset before preparing the circuit")
+    if validation.get("mode", "manual") == "automatic":
+        if bell_label(position.sv) != validation["target_bell"]:
+            raise RuleError("INVALID_CIRCUIT", f"Prepare {validation['target_bell']} before RUN CIRCUIT")
+        return replace(position, circuit_validated=True, validation_proof=validation["target_bell"])
     expected = tuple(tuple(op) for op in validation["required_sequence"])
     actual = position.preparation_history or ()
     sequence = " then ".join(f"{op[0].upper()}({','.join(str(q) for q in op[1:])})" for op in expected)
@@ -127,7 +137,7 @@ def run_circuit(stage: dict, position: Position) -> Position:
         raise RuleError("CIRCUIT_INCOMPLETE", f"Complete {sequence} before RUN CIRCUIT")
     if actual != expected or bell_label(position.sv) != validation["target_bell"]:
         raise RuleError("INVALID_CIRCUIT", f"Prepare the target Bell state {validation['target_bell']} with {sequence}; reset to retry")
-    return replace(position, circuit_validated=True)
+    return replace(position, circuit_validated=True, validation_proof=validation["target_bell"])
 
 
 def check_qubit(qubit, n):
@@ -190,15 +200,24 @@ def apply(stage: dict, position: Position, gate, qubit, target=-1,
     history = position.preparation_history
     if history is not None:
         history += ((gate, qubit, target) if gate == "cx" else (gate, qubit),)
+    validated = position.circuit_validated
+    proof = position.validation_proof
+    validation = stage.get("validation", {})
+    if validation.get("mode", "manual") == "automatic" and not validated:
+        validated = bell_label(sv) == validation.get("target_bell")
+        if validated:
+            proof = validation["target_bell"]
     return replace(position, sv=sv, gates_used=position.gates_used + 1,
                    uses_left=tuple(uses), preparation_history=history,
-                   feed_forward_phase=next_phase), terminal["id"]
+                   feed_forward_phase=next_phase, circuit_validated=validated,
+                   validation_proof=proof), terminal["id"]
 
 
 def check_measurement(stage, position, qubit):
     """Check permissions before sampling, and again at the pure collapse boundary."""
     check_qubit(qubit, len(position.measured))
-    if "validation" in stage and not position.circuit_validated:
+    if ("validation" in stage and not position.circuit_validated
+            and stage["validation"].get("mode", "manual") != "automatic"):
         raise RuleError("CIRCUIT_NOT_VALIDATED", "Use RUN CIRCUIT successfully before measuring")
     if position.measured[qubit] is not None:
         return
@@ -246,7 +265,8 @@ def actions(stage: dict, position: Position, allow_cx=True):
         except RuleError:
             continue
         result.append(("gate", terminal["id"]))
-    if "validation" in stage and not position.circuit_validated:
+    if ("validation" in stage and not position.circuit_validated
+            and stage["validation"].get("mode", "manual") != "automatic"):
         try:
             run_circuit(stage, position)
         except RuleError:
